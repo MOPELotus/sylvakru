@@ -17,6 +17,11 @@ struct _MyApplication {
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 
 static void log_renderer(GtkWidget* widget) {
+  GdkGLContext* current = gdk_gl_context_get_current();
+  if (current != nullptr) {
+    g_message("Linsen current Flutter renderer: %s; vendor: %s", glGetString(GL_RENDERER), glGetString(GL_VENDOR));
+  }
+  g_message("Linsen renderer widget: %s", G_OBJECT_TYPE_NAME(widget));
   if (GTK_IS_GL_AREA(widget)) {
     gtk_gl_area_make_current(GTK_GL_AREA(widget));
     if (!gtk_gl_area_get_error(GTK_GL_AREA(widget))) {
@@ -87,6 +92,7 @@ static void my_application_activate(GApplication* application) {
   // Requires the view to be realized so we can start rendering.
   g_signal_connect_swapped(view, "first-frame", G_CALLBACK(first_frame_cb), self);
   gtk_widget_realize(GTK_WIDGET(view));
+  gtk_widget_show(GTK_WIDGET(window));
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 

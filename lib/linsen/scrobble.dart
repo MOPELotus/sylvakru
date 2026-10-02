@@ -32,6 +32,7 @@ class ScrobbleOutbox {
   final bool Function() enabled;
   ListenSession? session;
   bool suspended = false;
+  int _sessionGeneration = 0;
   final List<Map<String, dynamic>> tasks = [];
   Future<void> _tail = Future.value();
   bool _sending = false;
@@ -60,6 +61,7 @@ class ScrobbleOutbox {
 
   Future<void> start(ResolvedMedia? media, int? durationMs) async {
     await finish();
+    final generation = _sessionGeneration;
     if (suspended ||
         !enabled() ||
         media == null ||
@@ -84,11 +86,14 @@ class ScrobbleOutbox {
       return;
     }
     final owner = await account();
-    if (owner != null) session = ListenSession(media, owner, durationMs);
+    if (owner != null && !suspended && generation == _sessionGeneration) {
+      session = ListenSession(media, owner, durationMs);
+    }
   }
 
   void playing(bool value) => session?.playing(value);
   Future<void> finish() async {
+    _sessionGeneration++;
     final listen = session;
     session = null;
     if (listen == null) return;

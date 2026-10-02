@@ -96,10 +96,10 @@ class LinsenController extends ChangeNotifier {
       saveCredential: (platform, value) async {
         if (value == null) {
           await _secure.delete(key: 'linsen.$platform');
+          availability.invalidate();
         } else {
           await _secure.write(key: 'linsen.$platform', value: value);
         }
-        availability.invalidate();
         notifyListeners();
       },
     );
@@ -426,6 +426,10 @@ class LinsenController extends ChangeNotifier {
   }
 
   Future<void> logout(String platform) async {
+    if (platform == 'netease') {
+      outbox.suspended = true;
+      await outbox.finish();
+    }
     service.invalidate();
     service.credentials.remove(platform);
     await _secure.delete(key: 'linsen.$platform');

@@ -21,7 +21,7 @@ dependencies {
 
 android {
     namespace = "com.mopelotus.linsen"
-    compileSdk = 37
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

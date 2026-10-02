@@ -5,7 +5,7 @@ root = pathlib.Path(__file__).resolve().parents[1]
 record = json.loads((root / 'docs/verification.json').read_text())
 tag = sys.argv[1]
 version = re.search(r'^version: ([^+\n]+)', (root/'pubspec.yaml').read_text(), re.M)[1]
-if tag != 'v'+version: raise SystemExit('Tag and package version differ')
+if tag != 'v'+version and not tag.startswith('v'+version+'-'): raise SystemExit('Tag and package version differ')
 required = ['windows_x64','windows_arm64','android_arm','android_arm64','coloros16_controls','coloros16_lyrics','background_audio','mixed_queue','cloud_upload','scrobble','license_audit']
 missing = [key for key in required if not isinstance(record.get(key), dict) or record[key].get('passed') is not True or not record[key].get('evidence')]
 if missing: raise SystemExit('Release blocked; missing actual acceptance: '+', '.join(missing))

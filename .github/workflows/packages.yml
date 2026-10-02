@@ -31,7 +31,7 @@ jobs:
         run: |
           rustup toolchain install 1.98.1 --profile minimal
           rustup default 1.98.1
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;28.2.13676358' 'platforms;android-37' 'build-tools;37.0.0'
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;28.2.13676358' 'platforms;android-36' 'build-tools;36.0.0'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
       - run: python3 tooling/build_native.py android ${{ matrix.arch }}
       - name: Configure the persistent release signature
@@ -87,7 +87,10 @@ jobs:
           python tooling/build_native.py windows ${{ matrix.arch }}
       - run: python tooling/build_lofty.py ${{ matrix.arch }}
       - run: python tooling/prepare_mpv.py ${{ matrix.arch }}
-      - run: flutter build windows --release --target-platform windows-${{ matrix.arch }}
+      - name: Select native Windows ARM64 artifacts
+        if: matrix.arch == 'arm64'
+        run: python tooling/prepare_flutter_arm64.py
+      - run: flutter build windows --release
       - name: Verify binaries and build installer
         shell: pwsh
         run: |

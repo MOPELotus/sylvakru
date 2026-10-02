@@ -688,6 +688,14 @@ class MyAudioHandler extends BaseAudioHandler {
         _recoverAttempts = 3;
         final refreshed = await linsen.resolveSong(song, refresh: true);
         if (refreshed == null || epoch != _loadGeneration) return;
+        await linsen.outbox.start(
+          refreshed,
+          refreshed.durationMs ?? song.duration?.inMilliseconds,
+        );
+        if (epoch != _loadGeneration) {
+          await linsen.outbox.finish();
+          return;
+        }
         url = refreshed.url;
         headers = refreshed.headers;
       }
@@ -801,6 +809,11 @@ class MyAudioHandler extends BaseAudioHandler {
         );
       }
 
+      if (epoch != _loadGeneration) {
+        await _player.stop();
+        await linsen.outbox.finish();
+        return;
+      }
       if (isPlayingNotifier.value) {
         _playLastSyncTime = DateTime.now();
       }
