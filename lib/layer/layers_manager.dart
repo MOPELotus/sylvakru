@@ -20,7 +20,8 @@ import 'package:sylvakru/layer/folders_layer.dart';
 import 'package:sylvakru/layer/font_picker_layer.dart';
 // Modified 2026 MOPELotus: use the private TuneWeave workspace as home.
 import 'package:sylvakru/linsen/workspace.dart';
-import 'package:sylvakru/layer/home_layer.dart' show homeKey, homeVisibleNotifier;
+import 'package:sylvakru/layer/home_layer.dart'
+    show homeKey, homeVisibleNotifier;
 import 'package:sylvakru/layer/license_layer.dart';
 import 'package:sylvakru/layer/playlists_layer.dart';
 import 'package:sylvakru/layer/premium_layer.dart';
@@ -161,13 +162,12 @@ class LayersManager {
     }
 
     topRootLayer = layer;
-    if (isMobile) {
-      bottomRootPage = topRootPage;
-      topRootPage = rootPageMap.putIfAbsent(
-        topRootLayer!,
-        () => createPage(topRootLayer!),
-      );
-    }
+    // Desktop windows can also switch into the narrow portrait layout.
+    bottomRootPage = topRootPage;
+    topRootPage = rootPageMap.putIfAbsent(
+      topRootLayer!,
+      () => createPage(topRootLayer!),
+    );
 
     sidebarHighlighLabel.value = label;
     switchNotifier.value++;

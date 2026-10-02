@@ -66,6 +66,7 @@ jobs:
           PY
       - name: Build signed APK
         run: flutter build apk --release --target-platform android-${{ matrix.arch }}
+      - run: python3 tooling/verify_apk.py build/app/outputs/flutter-apk/app-release.apk ${{ matrix.arch }}
       - name: Collect APK and checksum
         run: |
           mkdir -p dist
@@ -96,6 +97,7 @@ jobs:
           flutter-version: '3.47.5'
           architecture: x64
           cache: true
+          cache-key: linsen-flutter-3.47.5-${{ runner.os }}-${{ matrix.arch }}-pristine-v1
       - run: flutter pub get --enforce-lockfile
       - name: Restore native build cache
         id: native-cache
@@ -140,3 +142,6 @@ jobs:
           name: Linsen-windows-${{ matrix.arch }}
           path: dist/*
           retention-days: 30
+      - name: Restore the pinned Flutter SDK
+        if: always() && matrix.arch == 'arm64'
+        run: python tooling/prepare_flutter_arm64.py --restore

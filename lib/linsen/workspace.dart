@@ -10,6 +10,7 @@ import '../base/audio_handler.dart';
 import '../base/data/library.dart';
 import '../base/widgets/manage_music_folders.dart';
 import '../base/services/interaction.dart';
+import '../base/utils/media_query.dart';
 import 'availability.dart';
 import 'controller.dart';
 part 'workspace_actions.dart';
@@ -417,6 +418,12 @@ class _LinsenWorkspaceState extends State<LinsenWorkspace> {
             padding: const EdgeInsets.fromLTRB(18, 14, 12, 8),
             child: Row(
               children: [
+                if (Scaffold.maybeOf(context)?.hasDrawer == true)
+                  IconButton(
+                    tooltip: '音乐库与设置',
+                    onPressed: () => Scaffold.of(context).openDrawer(),
+                    icon: const Icon(Icons.menu),
+                  ),
                 const Text(
                   '聆序',
                   style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600),
@@ -717,6 +724,7 @@ class _LinsenWorkspaceState extends State<LinsenWorkspace> {
               ),
             ),
           ),
+          if (isTooNarrow(context)) const SizedBox(height: 116),
         ],
       ),
     ),
