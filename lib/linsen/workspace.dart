@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'cloud_upload.dart';
+import 'track_export.dart';
 import 'package:material_ui/material_ui.dart';
 import '../base/audio_handler.dart';
 import '../base/data/library.dart';
@@ -21,6 +22,8 @@ class LinsenWorkspace extends StatefulWidget {
   @override
   State<LinsenWorkspace> createState() => _LinsenWorkspaceState();
 }
+
+final _exporter = TrackExporter();
 
 class _LinsenWorkspaceState extends State<LinsenWorkspace> {
   final query = TextEditingController();
@@ -40,9 +43,7 @@ class _LinsenWorkspaceState extends State<LinsenWorkspace> {
 
   void showError(Object exception) {
     if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('$exception')));
+      showCenterMessage('$exception');
     }
   }
 

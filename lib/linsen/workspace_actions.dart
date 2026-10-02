@@ -207,66 +207,32 @@ extension _WorkspaceActions on _LinsenWorkspaceState {
             );
           }
         case 'download':
-          await download(row, encoded);
+          await download(row);
       }
     } catch (e) {
       showError(e);
     }
   }
 
-  Future<void> download(Map<String, dynamic> row, String encoded) async {
+  Future<void> download(Map<String, dynamic> row) async {
+    final api = linsen.service;
+    final generation = api.generation;
+    final preferredPlatform = linsen.playbackPlatform;
     final dir = await FilePicker.getDirectoryPath(dialogTitle: '保存到');
     if (dir == null) return;
-    final data = await linsen.service.data(
-      'GET',
-      row['cloud'] == true
-          ? '/v1/account/cloud/tracks/$encoded/download'
-          : '/v1/tracks/$encoded/download',
+    final result = await _exporter.export(
+      api: api,
+      generation: generation,
+      reference: row['ref'] as String,
+      cloud: row['cloud'] == true,
+      preferredPlatform: preferredPlatform,
+      directory: Directory(dir),
+      title: row['name'] as String? ?? 'song',
+      confirmOverwrite: () => confirm('目标文件已存在，要覆盖吗？'),
     );
-    final uri = Uri.parse(data['url'] as String);
-    if (!const {'https', 'http'}.contains(uri.scheme)) {
-      throw StateError('无效下载地址');
-    }
-    final extension =
-        RegExp(r'^[a-z0-9]{1,8}$').hasMatch(data['format'] as String? ?? '')
-        ? data['format']
-        : 'audio';
-    final name = (row['name'] as String? ?? 'song').replaceAll(
-      RegExp(r'[<>:"/\\|?*]'),
-      '_',
-    );
-    final destination = File(p.join(dir, '$name.$extension')),
-        temporary = File(p.join(dir, '$name.$extension.part'));
-    if (await destination.exists() && !await confirm('目标文件已存在，要覆盖吗？')) return;
-    final client = HttpClient();
-    try {
-      final request = await client.getUrl(uri);
-      request.followRedirects = false;
-      for (final header in (data['headers'] as Map? ?? {}).entries) {
-        request.headers.set('${header.key}', '${header.value}');
-      }
-      final response = await request.close().timeout(
-        const Duration(seconds: 30),
-      );
-      if (response.statusCode != 200) {
-        throw StateError('下载失败：${response.statusCode}');
-      }
-      final sink = temporary.openWrite();
-      try {
-        await sink.addStream(response.timeout(const Duration(seconds: 30)));
-      } finally {
-        await sink.close();
-      }
-      if (await destination.exists()) await destination.delete();
-      await temporary.rename(destination.path);
-    } finally {
-      client.close(force: true);
-      if (await temporary.exists()) await temporary.delete();
-    }
+    if (result == null) return;
     if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('下载完成')));
+      showCenterMessage('下载完成');
     }
   }
 }
