@@ -158,4 +158,84 @@ void main() {
       expect((await cache.read(path))?['resolved_track'], 'qq:1');
     },
   );
+  test(
+    'Clear removes committed pairs and abandoned partials, preserving other files',
+    () async {
+      await cache.publish(path, await download([1, 2, 3]), manifest('qq:1'));
+      await File('${directory.path}/orphan.audio.part').writeAsBytes([4]);
+      await File(
+        '${directory.path}/orphan.audio.json.part',
+      ).writeAsString('{}');
+      final local = File('${directory.path}/my-song.mp3');
+      await local.writeAsBytes([5, 6]);
+      expect(await cache.size(directory), greaterThan(3));
+      await cache.clear(directory);
+      expect(await cache.read(path), isNull);
+      expect(await directory.list().map((e) => e.path).toList(), [local.path]);
+      expect(await cache.size(directory), 2);
+    },
+  );
+
+  test(
+    'Clearing invalidates an active download without deleting its open partial',
+    () async {
+      final gate = Completer<void>();
+      final started = Completer<void>();
+      final ticket = cache.generation;
+      final transfer = cache.downloadOnce(path, () async {
+        final partial = await download([1, 2, 3]);
+        started.complete();
+        await gate.future;
+        await cache.publish(
+          path,
+          partial,
+          manifest('qq:1'),
+          expectedGeneration: ticket,
+        );
+        await partial.delete();
+      });
+      await started.future;
+      await cache.clear(directory);
+      expect(await File('$path.part').exists(), true);
+      gate.complete();
+      await transfer;
+      expect(await cache.read(path), isNull);
+      expect(await cache.size(directory), 0);
+      await cache.downloadOnce(path, () async {
+        await cache.publish(
+          path,
+          await download([4, 5]),
+          manifest('qq:2'),
+          expectedGeneration: cache.generation,
+        );
+      });
+      expect((await cache.read(path))?['resolved_track'], 'qq:2');
+    },
+  );
+
+  test(
+    'Clear shares one operation, refuses new transfers during it and revokes old tickets',
+    () async {
+      await cache.publish(path, await download([1]), manifest('qq:1'));
+      final ticket = cache.generation;
+      final first = cache.clear(directory);
+      final second = cache.clear(directory);
+      expect(identical(first, second), true);
+      expect(cache.generation, ticket + 1);
+      await cache.downloadOnce(
+        path,
+        () async => fail('started while clearing'),
+      );
+      await first;
+      final latePartial = await download([9]);
+      await cache.publish(
+        path,
+        latePartial,
+        manifest('qq:9'),
+        expectedGeneration: ticket,
+      );
+      expect(await cache.read(path), isNull);
+      expect(await latePartial.exists(), true);
+    },
+  );
 }

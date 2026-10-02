@@ -501,13 +501,20 @@ class _SettingsListState extends State<SettingsList> {
         }
         if (await showConfirmDialog(context, l10n.clear)) {
           showCenterLoading();
-          layersManager.clearDataLayers();
-          audioHandler.clear();
-          await library.clearCache();
-          await library.clearPicture();
-          await library.clearLrcCache();
-          playlistManager.updateNotifier.value++;
-          removeCenterLoading();
+          var failed = false;
+          try {
+            layersManager.clearDataLayers();
+            await audioHandler.clear();
+            await library.clearCache();
+            await library.clearPicture();
+            await library.clearLrcCache();
+            playlistManager.updateNotifier.value++;
+          } catch (_) {
+            failed = true;
+          } finally {
+            removeCenterLoading();
+          }
+          if (failed) showCenterMessage('部分缓存暂时无法删除，请稍后重试');
         }
       },
       trailing: ValueListenableBuilder(

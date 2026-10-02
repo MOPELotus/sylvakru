@@ -575,7 +575,7 @@ class MyAudioHandler extends BaseAudioHandler {
   }
 
   Future<void> clear() async {
-    stop();
+    await stop();
     playQueue = [];
     _playQueueTmp = [];
     currentIndex = -1;
@@ -921,12 +921,13 @@ class MyAudioHandler extends BaseAudioHandler {
   Future<void> stop() async {
     _loadGeneration++;
     unawaited(linsen.outbox.finish());
-    _player.stop();
+    final stopped = _player.stop();
     updateIsPlaying(false);
     updatePlaybackState(stop: true);
     _positionTimer?.cancel();
     _positionTimer = null;
     _positionState.writeAsString(Duration.zero.inMilliseconds.toString());
+    await stopped;
   }
 
   @override

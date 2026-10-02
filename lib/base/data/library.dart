@@ -151,22 +151,24 @@ class Library {
       await folder.load();
     }
 
-    await _accumulateCache();
+    await refreshCacheSize();
   }
 
-  Future<void> _accumulateCache() async {
-    cacheSizeNotifier.value = 0;
+  Future<void> refreshCacheSize() async {
     Directory cacheDir = Directory(getCachesPath(sourceType));
-    if (!await cacheDir.exists()) {
-      return;
-    }
-    int total = 0;
-    await for (final file in cacheDir.list()) {
-      if (file is File && !file.path.endsWith('.part')) {
-        total += await file.length();
+    int total = await linsen.recordingCacheSize();
+    if (await cacheDir.exists()) {
+      await for (final file in cacheDir.list(followLinks: false)) {
+        if (file is File && !file.path.endsWith('.part')) {
+          try {
+            total += await file.length();
+          } on FileSystemException {
+            // Cache deletion can race this disk-space snapshot.
+          }
+        }
       }
     }
-    cacheSizeNotifier.value += total / (1024 * 1024);
+    cacheSizeNotifier.value = total / (1024 * 1024);
   }
 
   Future<void> tryAddCache(MyAudioMetadata song) async {
@@ -205,14 +207,18 @@ class Library {
   }
 
   Future<void> clearCache() async {
-    Directory cacheDir = Directory(getCachesPath(sourceType));
-    if (await cacheDir.exists()) {
-      await cacheDir.delete(recursive: true);
-    }
+    try {
+      await linsen.clearRecordingCache();
+      Directory cacheDir = Directory(getCachesPath(sourceType));
+      if (await cacheDir.exists()) {
+        await cacheDir.delete(recursive: true);
+      }
 
-    cacheSizeNotifier.value = 0;
-    for (final song in library.id2Song.values) {
-      song.cacheExist = false;
+      for (final song in library.id2Song.values) {
+        song.cacheExist = false;
+      }
+    } finally {
+      await refreshCacheSize();
     }
   }
 

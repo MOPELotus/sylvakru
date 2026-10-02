@@ -37,6 +37,25 @@ class LinsenController extends ChangeNotifier {
   final Map<String, Map<String, dynamic>> entries = {};
   final Map<String, ResolvedMedia> playingMedia = {};
   final _recordings = RecordingCache();
+  final _cacheClients = <HttpClient>{};
+  Directory get _cacheDirectory =>
+      Directory('${appSupportDir.path}/linsen/cache');
+
+  Future<int> recordingCacheSize() => _recordings.size(_cacheDirectory);
+
+  Future<void> clearRecordingCache() async {
+    // Cancellation happens synchronously before any filesystem await.
+    final cleared = _recordings.clear(_cacheDirectory);
+    for (final client in _cacheClients) {
+      client.close(force: true);
+    }
+    availability.invalidate();
+    for (final song in library.id2Song.values) {
+      if (isOnline(song)) song.cacheExist = false;
+    }
+    await cleared;
+  }
+
   late final outbox = ScrobbleOutbox(
     file: File('${appSupportDir.path}/linsen/scrobbles.json'),
     api: () => api,
@@ -386,6 +405,8 @@ class LinsenController extends ChangeNotifier {
       await _recordings.invalidate(path);
     } catch (_) {
       // A locked file must not prevent trying an online replacement.
+    } finally {
+      await library.refreshCacheSize();
     }
   }
 
@@ -396,8 +417,9 @@ class LinsenController extends ChangeNotifier {
 
   Future<void> _cacheSong(MyAudioMetadata song) async {
     final path = song.cachePath!;
+    final cacheGeneration = _recordings.generation;
     if (await _recordings.read(path) != null) {
-      _setCacheFlags(path, true);
+      if (cacheGeneration == _recordings.generation) _setCacheFlags(path, true);
       return;
     }
     _setCacheFlags(path, false);
@@ -405,6 +427,10 @@ class LinsenController extends ChangeNotifier {
     final client = service;
     final generation = client.generation;
     final http = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+    _cacheClients.add(http);
+    bool cancelled() =>
+        generation != client.generation ||
+        cacheGeneration != _recordings.generation;
     try {
       final media = await availability.check(song.id);
       if (media.isTrial) return;
@@ -414,7 +440,7 @@ class LinsenController extends ChangeNotifier {
               song.parsedLyrics != null
           ? song.parsedLyrics!
           : await _lyricsFor(song, media);
-      if (generation != client.generation) return;
+      if (cancelled()) return;
       await temporary.parent.create(recursive: true);
       // No other in-process download owns this path; reclaim crash leftovers.
       if (await temporary.exists()) await temporary.delete();
@@ -433,7 +459,7 @@ class LinsenController extends ChangeNotifier {
         await for (final bytes in response.timeout(
           const Duration(seconds: 30),
         )) {
-          if (generation != client.generation) {
+          if (cancelled()) {
             throw const TuneWeaveException('cancelled', '缓存已取消');
           }
           sink.add(bytes);
@@ -441,7 +467,7 @@ class LinsenController extends ChangeNotifier {
       } finally {
         await sink.close();
       }
-      if (generation != client.generation || await temporary.length() == 0) {
+      if (cancelled() || await temporary.length() == 0) {
         return;
       }
       final manifest = <String, dynamic>{
@@ -457,13 +483,20 @@ class LinsenController extends ChangeNotifier {
         },
         if (media.isTrial) 'trial': media.raw['trial'],
       };
-      await _recordings.publish(path, temporary, manifest);
-      if (generation == client.generation) _setCacheFlags(path, true);
+      await _recordings.publish(
+        path,
+        temporary,
+        manifest,
+        expectedGeneration: cacheGeneration,
+      );
+      if (!cancelled()) _setCacheFlags(path, true);
     } catch (_) {
       /* A cache failure does not interrupt playback. */
     } finally {
       http.close(force: true);
+      _cacheClients.remove(http);
       if (await temporary.exists()) await temporary.delete();
+      await library.refreshCacheSize();
     }
   }
 

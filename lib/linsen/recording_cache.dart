@@ -7,8 +7,11 @@ import 'dart:io';
 class RecordingCache {
   final Map<String, Future<void>> _operations = {};
   final Map<String, Future<void>> _downloads = {};
+  int generation = 0;
+  Future<void>? _clearing;
 
   Future<void> downloadOnce(String path, Future<void> Function() action) {
+    if (_clearing != null) return Future<void>.value();
     if (_downloads[path] case final pending?) return pending;
     final operation = Future<void>.sync(action);
     _downloads[path] = operation;
@@ -80,8 +83,10 @@ class RecordingCache {
   Future<void> publish(
     String path,
     File downloaded,
-    Map<String, dynamic> manifest,
-  ) => _serial(path, () async {
+    Map<String, dynamic> manifest, {
+    int? expectedGeneration,
+  }) => _serial(path, () async {
+    if (expectedGeneration != null && expectedGeneration != generation) return;
     final length = await downloaded.length();
     if (length == 0 || manifest['trial'] != null) {
       throw const FormatException(
@@ -105,4 +110,71 @@ class RecordingCache {
       if (await temporaryMetadata.exists()) await temporaryMetadata.delete();
     }
   });
+
+  /// Counts occupied disk space, including orphaned recordings, but excludes
+  /// unfinished transfers. Listing races with a completed download are harmless.
+  Future<int> size(Directory directory) async {
+    if (!await directory.exists()) return 0;
+    var bytes = 0;
+    await for (final entry in directory.list(followLinks: false)) {
+      if (entry is File && !entry.path.endsWith('.part')) {
+        try {
+          bytes += await entry.length();
+        } on FileSystemException {
+          // Another operation may have removed this file after listing it.
+        }
+      }
+    }
+    return bytes;
+  }
+
+  Future<void> clear(Directory directory) {
+    if (_clearing case final pending?) return pending;
+    generation++;
+    final result = _clear(directory);
+    _clearing = result;
+    unawaited(
+      result.then<void>(
+        (_) => _clearing = null,
+        onError: (Object _, StackTrace _) => _clearing = null,
+      ),
+    );
+    return result;
+  }
+
+  Future<void> _clear(Directory directory) async {
+    final paths = <String>{..._downloads.keys, ..._operations.keys};
+    if (await directory.exists()) {
+      await for (final entry in directory.list(followLinks: false)) {
+        if (entry is! File) continue;
+        final name = entry.path;
+        if (name.endsWith('.audio')) paths.add(name);
+        if (name.endsWith('.audio.json')) {
+          paths.add(name.substring(0, name.length - 5));
+        }
+        if (name.endsWith('.audio.part')) {
+          paths.add(name.substring(0, name.length - 5));
+        }
+        if (name.endsWith('.audio.json.part')) {
+          paths.add(name.substring(0, name.length - 10));
+        }
+      }
+    }
+    Object? failure;
+    // Serialized against publication: a download committed just before clearing
+    // is removed; one finishing afterwards has an obsolete generation ticket.
+    for (final path in paths) {
+      try {
+        await invalidate(path);
+        if (!_downloads.containsKey(path)) {
+          for (final file in [File('$path.part'), File('$path.json.part')]) {
+            if (await file.exists()) await file.delete();
+          }
+        }
+      } on FileSystemException catch (error) {
+        failure ??= error;
+      }
+    }
+    if (failure != null) throw failure;
+  }
 }
