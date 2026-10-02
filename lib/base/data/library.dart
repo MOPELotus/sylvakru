@@ -1,3 +1,5 @@
+// Modified 2026 MOPELotus: cache resolved TuneWeave media independently of local library scans.
+import 'package:sylvakru/linsen/controller.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -168,6 +170,10 @@ class Library {
   }
 
   Future<void> tryAddCache(MyAudioMetadata song) async {
+    if (linsen.isOnline(song)) {
+      await linsen.cacheSong(song);
+      return;
+    }
     if (sourceType == .local || song.cacheExist) {
       return;
     }

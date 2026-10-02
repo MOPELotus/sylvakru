@@ -1,0 +1,14 @@
+{
+  "implementation_sha256": null,
+  "windows_x64": {"passed": false, "evidence": null},
+  "windows_arm64": {"passed": false, "evidence": null},
+  "android_arm": {"passed": false, "evidence": null},
+  "android_arm64": {"passed": false, "evidence": null},
+  "coloros16_controls": {"passed": false, "evidence": null},
+  "coloros16_lyrics": {"passed": false, "evidence": null},
+  "background_audio": {"passed": false, "evidence": null},
+  "mixed_queue": {"passed": false, "evidence": null},
+  "cloud_upload": {"passed": false, "evidence": null},
+  "scrobble": {"passed": false, "evidence": null},
+  "license_audit": {"passed": false, "evidence": null}
+}

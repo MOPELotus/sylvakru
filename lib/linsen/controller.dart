@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:crypto/crypto.dart';
 import 'package:audio_tags_lofty/audio_tags_lofty.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -164,6 +165,11 @@ class LinsenController extends ChangeNotifier {
       path: entry['source_ref'] as String,
     );
     song.picture = MyPicture.form(snapshot['cover_url'] as String? ?? '');
+    final hash = sha256.convert(utf8.encode(song.id));
+    song.cachePath = '${appSupportDir.path}/linsen/cache/$hash.audio';
+    song.cacheExist =
+        File(song.cachePath!).existsSync() &&
+        File('${song.cachePath}.json').existsSync();
     library.id2Song[song.id] = song;
     return song;
   }
@@ -175,11 +181,16 @@ class LinsenController extends ChangeNotifier {
     final reference = track['ref'] as String;
     if (cloud) {
       // Cloud identity is account-private and must never be replaced by matched_track_ref.
-      final id = 'cloud:$reference';
+      final owner = await neteaseAccountIdentity(api);
+      if (owner == null) {
+        throw const TuneWeaveException('authentication_required', '请登录网易云云盘账号');
+      }
+      final id = 'cloud:$owner:$reference';
       final entry = <String, dynamic>{
         'id': id,
         'source_ref': reference,
         'cloud': true,
+        'account_identity': owner,
         'snapshot': {
           'title': track['name'],
           'artists': (track['artists'] as List? ?? [])
@@ -226,6 +237,12 @@ class LinsenController extends ChangeNotifier {
       return ResolvedMedia(Map<String, dynamic>.from(data as Map));
     }
     if (entry['cloud'] == true) {
+      if (entry['account_identity'] != await neteaseAccountIdentity(api)) {
+        throw const TuneWeaveException(
+          'authentication_required',
+          '该云盘歌曲属于另一账号',
+        );
+      }
       final data = await service.data(
         'GET',
         '/v1/account/cloud/tracks/${Uri.encodeComponent(entry['source_ref'] as String)}/download',
@@ -251,6 +268,30 @@ class LinsenController extends ChangeNotifier {
     bool refresh = false,
   }) async {
     if (!isOnline(song)) return null;
+    if (song.cacheExist && !refresh) {
+      if (entries[song.id]?['cloud'] == true &&
+          entries[song.id]?['account_identity'] !=
+              await neteaseAccountIdentity(api)) {
+        throw const TuneWeaveException(
+          'authentication_required',
+          '该云盘缓存属于另一账号',
+        );
+      }
+      final raw = Map<String, dynamic>.from(
+        jsonDecode(await File('${song.cachePath}.json').readAsString()) as Map,
+      );
+      if (raw['lyrics'] is Map) {
+        final lyrics = raw['lyrics'] as Map;
+        final parsed = ParsedLyrics();
+        parsed.isKaraoke = lyrics['is_karaoke'] == true;
+        parsed.lines = (lyrics['lines'] as List)
+            .map((line) => LyricLine.fromMap(line as Map))
+            .toList();
+        song.parsedLyrics = parsed;
+      }
+      playingMedia[song.id] = ResolvedMedia(raw);
+      return playingMedia[song.id];
+    }
     final media = await availability.check(song.id, refresh: refresh);
     playingMedia[song.id] = media;
     // Fetch lyrics for the actual resolved recording, never for an unrelated origin.
@@ -297,6 +338,93 @@ class LinsenController extends ChangeNotifier {
     return media;
   }
 
+  Future<void> cacheSong(MyAudioMetadata song) async {
+    if (!isOnline(song) || song.cacheExist || song.cachePath == null) return;
+    final temporary = File('${song.cachePath}.part');
+    if (await temporary.exists()) return;
+    final client = service;
+    final generation = client.generation;
+    final http = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+    try {
+      final media = await availability.check(song.id);
+      if (media.isTrial) return;
+      await temporary.parent.create(recursive: true);
+      await temporary.create(exclusive: true);
+      final request = await http.getUrl(Uri.parse(media.url));
+      request.followRedirects = false;
+      for (final header in media.headers.entries) {
+        request.headers.set(header.key, header.value);
+      }
+      final response = await request.close().timeout(
+        const Duration(seconds: 30),
+      );
+      if (response.statusCode != 200) return;
+      final sink = temporary.openWrite();
+      try {
+        await for (final bytes in response.timeout(
+          const Duration(seconds: 30),
+        )) {
+          if (generation != client.generation) {
+            throw const TuneWeaveException('cancelled', '缓存已取消');
+          }
+          sink.add(bytes);
+        }
+      } finally {
+        await sink.close();
+      }
+      if (generation != client.generation || await temporary.length() == 0) {
+        return;
+      }
+      final manifest = <String, dynamic>{
+        'url': 'https://cache.invalid/local',
+        'resolved_track': media.reference,
+        'resolved_platform': media.platform,
+        'actual_quality': media.quality,
+        'bitrate': media.bitrate,
+        'duration_ms': media.durationMs,
+        if (song.parsedLyrics != null)
+          'lyrics': {
+            'is_karaoke': song.parsedLyrics!.isKaraoke,
+            'lines': song.parsedLyrics!.lines
+                .map((line) => line.toMap())
+                .toList(),
+          },
+        if (media.isTrial) 'trial': media.raw['trial'],
+      };
+      await File(
+        '${song.cachePath}.json',
+      ).writeAsString(jsonEncode(manifest), flush: true);
+      await temporary.rename(song.cachePath!);
+      song.cacheExist = true;
+    } catch (_) {
+      /* A cache failure does not interrupt playback. */
+    } finally {
+      http.close(force: true);
+      if (await temporary.exists()) await temporary.delete();
+    }
+  }
+
+  Future<void> prepareLogin(String platform) async {
+    if (platform == 'netease') {
+      outbox.suspended = true;
+      await outbox.finish();
+      await _secure.delete(key: 'linsen.netease.identity');
+    }
+    service.invalidate();
+  }
+
+  Future<void> completeLogin(String platform) async {
+    if (platform == 'netease') {
+      outbox.suspended = true;
+      await outbox.finish();
+      await _secure.delete(key: 'linsen.netease.identity');
+      outbox.suspended = false;
+    }
+    service.invalidate();
+    availability.invalidate();
+    notifyListeners();
+  }
+
   Future<void> logout(String platform) async {
     service.invalidate();
     service.credentials.remove(platform);
@@ -309,11 +437,7 @@ class LinsenController extends ChangeNotifier {
   }
 
   Future<void> importCookie(String platform, String value) async {
-    service.invalidate();
-    if (platform == 'netease') {
-      await outbox.finish();
-      await _secure.delete(key: 'linsen.netease.identity');
-    }
+    await prepareLogin(platform);
     await service.data(
       'POST',
       '/v1/auth/import',
@@ -324,8 +448,7 @@ class LinsenController extends ChangeNotifier {
         'credential': {'kind': 'cookie', 'value': value},
       },
     );
-    availability.invalidate();
-    notifyListeners();
+    await completeLogin(platform);
   }
 
   Future<void> setPlaybackPlatform(String value) async {

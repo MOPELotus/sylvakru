@@ -1,29 +1,50 @@
 // Copyright 2026 MOPELotus. Linsen additions, Apache-2.0.
 import '../base/services/lyric.dart';
+import 'package:xml/xml.dart';
 
 ParsedLyrics parseTuneWeaveLyrics(
   Map<String, dynamic> data, {
   Duration? duration,
 }) {
   final result = ParsedLyrics();
-  final words = data['word_synced'] as String? ?? '';
+  var words = data['word_synced'] as String? ?? '';
   final format = data['format'] as String? ?? '';
   final line = RegExp(r'^\[(\d+),(\d+)\](.*)$');
   final yrc = RegExp(r'\((\d+),(\d+),\d+\)([^()]*)');
+  if (words.trimLeft().startsWith('<')) {
+    try {
+      words = XmlDocument.parse(words).descendants
+          .whereType<XmlElement>()
+          .map((e) => e.getAttribute('LyricContent'))
+          .whereType<String>()
+          .first;
+    } catch (_) {}
+  }
+  final qrc = RegExp(r'([^()]*)\((\d+),(\d+)\)');
   final krc = RegExp(r'<(\d+),(\d+),\d+>([^<]*)');
-  if (words.isNotEmpty && (format == 'yrc' || format == 'krc')) {
+  if (words.isNotEmpty && const {'yrc', 'krc', 'qrc'}.contains(format)) {
     for (final raw in words.split('\n')) {
       final match = line.firstMatch(raw.trim());
       if (match == null) continue;
       final start = int.parse(match[1]!);
       final tokens = <LyricToken>[];
-      for (final word in (format == 'krc' ? krc : yrc).allMatches(match[3]!)) {
-        final offset = int.parse(word[1]!) + (format == 'krc' ? start : 0);
+      for (final word
+          in (format == 'krc'
+                  ? krc
+                  : format == 'qrc'
+                  ? qrc
+                  : yrc)
+              .allMatches(match[3]!)) {
+        final offset =
+            int.parse(word[format == 'qrc' ? 2 : 1]!) +
+            (format == 'krc' ? start : 0);
         tokens.add(
           LyricToken(
             Duration(milliseconds: offset),
-            word[3]!,
-            Duration(milliseconds: offset + int.parse(word[2]!)),
+            word[format == 'qrc' ? 1 : 3]!,
+            Duration(
+              milliseconds: offset + int.parse(word[format == 'qrc' ? 3 : 2]!),
+            ),
           ),
         );
       }

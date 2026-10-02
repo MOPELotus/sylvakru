@@ -31,6 +31,7 @@ class ScrobbleOutbox {
   final Future<String?> Function() account;
   final bool Function() enabled;
   ListenSession? session;
+  bool suspended = false;
   final List<Map<String, dynamic>> tasks = [];
   Future<void> _tail = Future.value();
   bool _sending = false;
@@ -59,7 +60,8 @@ class ScrobbleOutbox {
 
   Future<void> start(ResolvedMedia? media, int? durationMs) async {
     await finish();
-    if (!enabled() ||
+    if (suspended ||
+        !enabled() ||
         media == null ||
         media.platform != 'netease' ||
         !media.reference.startsWith('netease:') ||
@@ -125,19 +127,30 @@ class ScrobbleOutbox {
   });
 
   Future<void> _drain() async {
-    if (_sending || !enabled()) return;
+    if (_sending || suspended || !enabled()) return;
     _sending = true;
     try {
       for (final task in tasks.where((t) => t['state'] == 'pending').toList()) {
+        if (suspended) break;
         final client = api();
         if (client == null ||
             client.credentials['netease'] == null ||
             await account() != task['account']) {
           continue;
         }
+        final epoch = client.generation;
+        final credential = client.credentials['netease'];
+        if (suspended) break;
         // Persist before sending: after a crash or timeout we cannot know delivery.
         task['state'] = 'sending';
         await save();
+        if (suspended ||
+            epoch != client.generation ||
+            credential != client.credentials['netease']) {
+          task['state'] = 'pending';
+          await save();
+          continue;
+        }
         try {
           final response = await client.data(
             'POST',

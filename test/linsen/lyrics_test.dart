@@ -2,6 +2,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sylvakru/linsen/lyrics.dart';
 
 void main() {
+  test('QRC XML word times use the actual recording timeline', () {
+    final result = parseTuneWeaveLyrics({
+      'format': 'qrc',
+      'word_synced':
+          '<QrcInfos><Lyric_1 LyricContent="[1000,1200]你(1000,500)好(1500,700)"/></QrcInfos>',
+    });
+    expect(result.lines.single.text, '你好');
+    expect(result.lines.single.tokens.last.start.inMilliseconds, 1500);
+    expect(result.lines.single.tokens.last.end!.inMilliseconds, 2200);
+  });
   test('YRC absolute word time, translations and romanization', () {
     final result = parseTuneWeaveLyrics({
       'format': 'yrc',

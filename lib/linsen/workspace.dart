@@ -1,6 +1,7 @@
 // Copyright 2026 MOPELotus. Linsen additions, Apache-2.0.
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'cloud_upload.dart';
@@ -10,6 +11,7 @@ import '../base/data/library.dart';
 import 'availability.dart';
 import 'controller.dart';
 part 'workspace_actions.dart';
+part 'workspace_auth.dart';
 
 class LinsenWorkspace extends StatefulWidget {
   const LinsenWorkspace({super.key});
@@ -92,7 +94,9 @@ class _LinsenWorkspaceState extends State<LinsenWorkspace> {
                 ? platformNames.keys
                       .where((p) => p != 'all' && p != 'local')
                       .toList()
-                : ['netease'])
+                : (linsen.api?.credentials.keys.toList().isNotEmpty == true
+                      ? linsen.api!.credentials.keys.toList()
+                      : ['netease']))
           : [platform];
       if (section == 'search' && query.text.trim().isEmpty) {
         setState(() {
@@ -101,50 +105,80 @@ class _LinsenWorkspaceState extends State<LinsenWorkspace> {
         });
         return;
       }
+      final failures = <String>[];
       final results = await Future.wait(
         platforms.map((p) async {
-          final response = await linsen.service.request(
-            'GET',
-            path ??
-                switch (section) {
-                  'favorites' => '/v1/account/favorites/tracks',
-                  'playlists' => '/v1/account/playlists',
-                  'albums' => '/v1/account/library/albums',
-                  'artists' => '/v1/account/following/artists',
-                  'history' => '/v1/account/history/tracks',
-                  'cloud' => '/v1/account/cloud/tracks',
-                  _ => '/v1/search',
-                },
-            query: {
-              'platform': p,
-              'limit': 30,
-              'offset': offset,
-              if (section == 'search') 'q': query.text.trim(),
-              if (section == 'search') 'kind': 'track',
-            },
-          );
-          final data = response['data'];
-          final items = data is List
-              ? data
-              : (data as Map?)?['items'] as List? ?? [];
-          return items.map((raw) {
-            final item = Map<String, dynamic>.from(raw as Map);
-            if (item['type'] == 'track') {
-              return Map<String, dynamic>.from(item['data'] as Map);
-            }
-            if (item['track'] is Map) {
-              return <String, dynamic>{
-                ...Map<String, dynamic>.from(item['track'] as Map),
-                if (section == 'cloud') 'ref': item['ref'],
-                if (section == 'cloud') 'cloud': true,
-              };
-            }
-            return item;
-          }).toList();
+          try {
+            final response = await linsen.service.request(
+              'GET',
+              path ??
+                  switch (section) {
+                    'favorites' => '/v1/account/favorites/tracks',
+                    'playlists' => '/v1/account/playlists',
+                    'albums' => '/v1/account/library/albums',
+                    'artists' => '/v1/account/following/artists',
+                    'history' => '/v1/account/history/tracks',
+                    'cloud' => '/v1/account/cloud/tracks',
+                    _ => '/v1/search',
+                  },
+              query: {
+                if (path == null) 'platform': p,
+                'limit': 30,
+                'offset': offset,
+                if (section == 'search') 'q': query.text.trim(),
+                if (section == 'search') 'kind': 'track',
+              },
+            );
+            final data = response['data'];
+            final items = data is List
+                ? data
+                : (data as Map?)?['items'] as List? ?? [];
+            return items.map((raw) {
+              final item = Map<String, dynamic>.from(raw as Map);
+              if (item['type'] == 'track') {
+                return Map<String, dynamic>.from(item['data'] as Map);
+              }
+              if (item['track'] is Map) {
+                return <String, dynamic>{
+                  ...Map<String, dynamic>.from(item['track'] as Map),
+                  if (section == 'cloud') 'ref': item['ref'],
+                  if (section == 'cloud') 'cloud': true,
+                };
+              }
+              return item;
+            }).toList();
+          } catch (e) {
+            failures.add('${platformNames[p] ?? p}: $e');
+            return <Map<String, dynamic>>[];
+          }
         }),
       );
       if (generation != epoch || !mounted) return;
       final batch = results.expand((r) => r).toList();
+      if (failures.length == platforms.length) {
+        throw StateError(failures.join('\n'));
+      }
+      if (!append && platform == 'all' && section == 'search') {
+        batch.addAll(
+          library.songList
+              .where(
+                (song) =>
+                    !linsen.isOnline(song) &&
+                    '${song.title} ${song.artist}'.toLowerCase().contains(
+                      query.text.toLowerCase(),
+                    ),
+              )
+              .map(
+                (song) => <String, dynamic>{
+                  'local_id': song.id,
+                  'name': song.title,
+                  'artists': [
+                    {'name': song.artist},
+                  ],
+                },
+              ),
+        );
+      }
       setState(() {
         rows = append ? [...rows, ...batch] : batch;
         more = results.any((r) => r.length == 30);
@@ -237,6 +271,24 @@ class _LinsenWorkspaceState extends State<LinsenWorkspace> {
                   Wrap(
                     spacing: 8,
                     children: [
+                      TextButton(
+                        onPressed: working
+                            ? null
+                            : () async {
+                                await qrLogin(selected);
+                                if (context.mounted) update(() {});
+                              },
+                        child: const Text('扫码登录'),
+                      ),
+                      TextButton(
+                        onPressed: working
+                            ? null
+                            : () async {
+                                await passwordLogin(selected);
+                                if (context.mounted) update(() {});
+                              },
+                        child: const Text('密码登录'),
+                      ),
                       TextButton(
                         onPressed: working
                             ? null
