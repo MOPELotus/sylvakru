@@ -166,7 +166,12 @@ class _PortraitViewState extends State<PortraitView>
               Expanded(
                 child: Sidebar(
                   closeDrawer: () {
-                    Navigator.pop(context);
+                    // Repeated taps during drawer dismissal must not pop the app route.
+                    if (endDrawerNotifier.value) {
+                      portraitKey.currentState?.closeEndDrawer();
+                    } else {
+                      portraitKey.currentState?.closeDrawer();
+                    }
                   },
                 ),
               ),

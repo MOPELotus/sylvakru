@@ -14,6 +14,8 @@ jobs:
       matrix:
         arch: [arm, arm64]
     runs-on: ubuntu-24.04
+    env:
+      LINSEN_ANDROID_ABI: ${{ matrix.arch == 'arm64' && 'arm64-v8a' || 'armeabi-v7a' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -65,12 +67,12 @@ jobs:
           pathlib.Path('android/key.properties').write_text('storeFile=linsen-release.jks\nkeyAlias=linsen\nstorePassword='+password+'\nkeyPassword='+password+'\n')
           PY
       - name: Build signed APK
-        run: flutter build apk --release --target-platform android-${{ matrix.arch }}
-      - run: python3 tooling/verify_apk.py build/app/outputs/flutter-apk/app-release.apk ${{ matrix.arch }}
+        run: flutter build apk --release --split-per-abi --target-platform android-${{ matrix.arch }}
+      - run: python3 tooling/verify_apk.py build/app/outputs/flutter-apk/app-$LINSEN_ANDROID_ABI-release.apk ${{ matrix.arch }}
       - name: Collect APK and checksum
         run: |
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/Linsen-android-${{ matrix.arch }}.apk
+          cp build/app/outputs/flutter-apk/app-$LINSEN_ANDROID_ABI-release.apk dist/Linsen-android-${{ matrix.arch }}.apk
           cd dist
           sha256sum *.apk > SHA256SUMS-android-${{ matrix.arch }}.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
