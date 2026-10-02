@@ -2,7 +2,6 @@ import 'dart:math';
 
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_gamepads/flutter_gamepads.dart';
 import 'package:sylvakru/base/audio_handler.dart';
 import 'package:sylvakru/base/services/color_manager.dart';
 import 'package:sylvakru/base/app.dart';
@@ -103,148 +102,136 @@ class _SongInfoState extends State<SongInfo> {
           paddingDivider(verticalPadding),
 
           Expanded(
-            child: GamepadInterceptor(
-              onBeforeIntent: (activator, intent) {
-                if (intent is ScrollIntent) {
-                  _scroll(intent.direction);
-                  return false;
+            child: KeyboardListener(
+              focusNode: FocusNode(),
+              autofocus: true,
+              onKeyEvent: (event) {
+                if (event is! KeyRepeatEvent && event is! KeyDownEvent) {
+                  return;
                 }
-                return true;
+
+                switch (event.logicalKey) {
+                  case .arrowUp:
+                    _scroll(AxisDirection.up);
+                    break;
+
+                  case .arrowDown:
+                    _scroll(AxisDirection.down);
+                    break;
+                }
               },
-              child: KeyboardListener(
-                focusNode: FocusNode(),
-                autofocus: true,
-                onKeyEvent: (event) {
-                  if (event is! KeyRepeatEvent && event is! KeyDownEvent) {
-                    return;
-                  }
+              child: ListView(
+                controller: _scrollController,
+                padding: .symmetric(horizontal: isMobile ? 5 : 15),
+                children: [
+                  SizedBox(height: 10),
 
-                  switch (event.logicalKey) {
-                    case .arrowUp:
-                      _scroll(AxisDirection.up);
-                      break;
+                  Row(
+                    children: [
+                      CoverArtWidget(
+                        size: isPhone ? 150 : 180,
+                        borderRadius: 10,
+                        picture: song.picture,
+                      ),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: isPhone ? .start : .center,
+                          children: [
+                            Text('${l10n.format}:', style: textStyle),
+                            Text(
+                              song.format?.toUpperCase() ?? "Unknown",
+                              style: textStyle,
+                            ),
 
-                    case .arrowDown:
-                      _scroll(AxisDirection.down);
-                      break;
-                  }
-                },
-                child: ListView(
-                  controller: _scrollController,
-                  padding: .symmetric(horizontal: isMobile ? 5 : 15),
-                  children: [
-                    SizedBox(height: 10),
+                            paddingDivider(verticalPadding),
 
-                    Row(
-                      children: [
-                        CoverArtWidget(
-                          size: isPhone ? 150 : 180,
-                          borderRadius: 10,
-                          picture: song.picture,
-                        ),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: isPhone ? .start : .center,
-                            children: [
-                              Text('${l10n.format}:', style: textStyle),
+                            Text('${l10n.bitrate}:', style: textStyle),
+                            Text(
+                              '${song.bitrate?.toString() ?? ''} Kbps',
+                              style: textStyle,
+                            ),
+
+                            paddingDivider(verticalPadding),
+
+                            Text('${l10n.samplerate}:', style: textStyle),
+                            if (song.samplerate == null)
+                              Text('')
+                            else
                               Text(
-                                song.format?.toUpperCase() ?? "Unknown",
+                                '${(song.samplerate! / 1000.0).toString()} KHz',
                                 style: textStyle,
                               ),
-
-                              paddingDivider(verticalPadding),
-
-                              Text('${l10n.bitrate}:', style: textStyle),
-                              Text(
-                                '${song.bitrate?.toString() ?? ''} Kbps',
-                                style: textStyle,
-                              ),
-
-                              paddingDivider(verticalPadding),
-
-                              Text('${l10n.samplerate}:', style: textStyle),
-                              if (song.samplerate == null)
-                                Text('')
-                              else
-                                Text(
-                                  '${(song.samplerate! / 1000.0).toString()} KHz',
-                                  style: textStyle,
-                                ),
-                            ],
-                          ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
+                  ),
 
-                    SizedBox(height: 10),
-                    paddingDivider(verticalPadding),
+                  SizedBox(height: 10),
+                  paddingDivider(verticalPadding),
 
-                    Text('${l10n.title}: ${getTitle(song)}', style: textStyle),
+                  Text('${l10n.title}: ${getTitle(song)}', style: textStyle),
 
-                    paddingDivider(verticalPadding),
+                  paddingDivider(verticalPadding),
 
-                    Text(
-                      '${l10n.artist}: ${getArtist(song)}',
-                      style: textStyle,
-                    ),
+                  Text('${l10n.artist}: ${getArtist(song)}', style: textStyle),
 
-                    paddingDivider(verticalPadding),
+                  paddingDivider(verticalPadding),
 
-                    Text('${l10n.album}: ${getAlbum(song)}', style: textStyle),
+                  Text('${l10n.album}: ${getAlbum(song)}', style: textStyle),
 
-                    paddingDivider(verticalPadding),
+                  paddingDivider(verticalPadding),
 
-                    Text(
-                      '${l10n.albumArtist}: ${getAlbumArtist(song)}',
-                      style: textStyle,
-                    ),
+                  Text(
+                    '${l10n.albumArtist}: ${getAlbumArtist(song)}',
+                    style: textStyle,
+                  ),
 
-                    paddingDivider(verticalPadding),
+                  paddingDivider(verticalPadding),
 
-                    Text('${l10n.genre}: ${getGenre(song)}', style: textStyle),
+                  Text('${l10n.genre}: ${getGenre(song)}', style: textStyle),
 
-                    paddingDivider(verticalPadding),
+                  paddingDivider(verticalPadding),
 
-                    Text(
-                      '${l10n.year}: ${song.year?.toString() ?? ''}',
-                      style: textStyle,
-                    ),
+                  Text(
+                    '${l10n.year}: ${song.year?.toString() ?? ''}',
+                    style: textStyle,
+                  ),
 
-                    paddingDivider(verticalPadding),
+                  paddingDivider(verticalPadding),
 
-                    Text(
-                      '${l10n.track}: ${song.track?.toString() ?? ''}',
-                      style: textStyle,
-                    ),
+                  Text(
+                    '${l10n.track}: ${song.track?.toString() ?? ''}',
+                    style: textStyle,
+                  ),
 
-                    paddingDivider(verticalPadding),
+                  paddingDivider(verticalPadding),
 
-                    Text(
-                      '${l10n.disc}: ${song.disc?.toString() ?? ''}',
-                      style: textStyle,
-                    ),
+                  Text(
+                    '${l10n.disc}: ${song.disc?.toString() ?? ''}',
+                    style: textStyle,
+                  ),
 
-                    paddingDivider(verticalPadding),
+                  paddingDivider(verticalPadding),
 
-                    Text(
-                      '${l10n.duration}: ${song.duration?.toString() ?? ''}',
-                      style: textStyle,
-                    ),
+                  Text(
+                    '${l10n.duration}: ${song.duration?.toString() ?? ''}',
+                    style: textStyle,
+                  ),
 
-                    paddingDivider(verticalPadding),
+                  paddingDivider(verticalPadding),
 
-                    Text('${l10n.path}:', style: textStyle),
+                  Text('${l10n.path}:', style: textStyle),
 
-                    Text(song.path ?? '', style: textStyle),
+                  Text(song.path ?? '', style: textStyle),
 
-                    paddingDivider(verticalPadding),
+                  paddingDivider(verticalPadding),
 
-                    Text('${l10n.lyrics}:', style: textStyle),
+                  Text('${l10n.lyrics}:', style: textStyle),
 
-                    Text(song.lyrics ?? '', style: textStyle),
-                  ],
-                ),
+                  Text(song.lyrics ?? '', style: textStyle),
+                ],
               ),
             ),
           ),

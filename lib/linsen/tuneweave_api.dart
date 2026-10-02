@@ -30,7 +30,11 @@ class TuneWeaveApi {
     ..connectionTimeout = const Duration(seconds: 15);
   int generation = 0;
 
-  TuneWeaveApi(this.endpoint, {this.runtimeToken, this.saveCredential});
+  TuneWeaveApi(this.endpoint, {this.runtimeToken, this.saveCredential}) {
+    if (const {'127.0.0.1', 'localhost', '::1'}.contains(endpoint.host)) {
+      _http.findProxy = (_) => 'DIRECT';
+    }
+  }
 
   void invalidate() {
     generation++;
@@ -112,10 +116,12 @@ class TuneWeaveApi {
       }
 
       collect((decoded['meta'] as Map?)?['caller_credential']);
-      collect((decoded['data'] as Map?)?['caller_credential']);
-      collect(
-        ((decoded['data'] as Map?)?['auth'] as Map?)?['caller_credential'],
-      );
+      final payload = decoded['data'];
+      if (payload is Map) {
+        collect(payload['caller_credential']);
+        final auth = payload['auth'];
+        if (auth is Map) collect(auth['caller_credential']);
+      }
       for (final header
           in response.headers['x-tuneweave-updated-credential'] ?? <String>[]) {
         for (final part in header.split(',')) {

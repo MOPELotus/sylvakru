@@ -205,8 +205,7 @@ class _LinsenWorkspaceState extends State<LinsenWorkspace> {
           ? library.id2Song[row['local_id']]!
           : await linsen.materialize(row, cloud: row['cloud'] == true);
       if (enqueue && playQueue.isNotEmpty) {
-        playQueue.add(song);
-        audioHandler.saveAllStates();
+        audioHandler.enqueueOccurrence(song);
       } else {
         audioHandler.singlePlay(song);
       }

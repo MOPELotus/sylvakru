@@ -85,7 +85,6 @@ dependencies:
   flutter_secure_storage: ^11.0.0
   in_app_purchase: ^3.3.0
   text_scroll: ^0.2.1
-  flutter_gamepads: ^0.1.11+4
   liquid_glass_widgets: ^1.7.0
   rive_animated_icon:
     git:

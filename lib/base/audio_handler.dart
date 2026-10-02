@@ -232,10 +232,11 @@ class MyAudioHandler extends BaseAudioHandler {
     if (current != currentLyricsIndexNotifier.value) {
       currentLyricsIndexNotifier.value = current;
 
-      if (controlCenterLyricsNotifier.value) {
-        updateServiceMediaItem(currentSong, lyric: lines[current].text);
-        updatePlaybackState();
-      }
+      updateServiceMediaItem(
+        currentSong,
+        lyric: current >= 0 ? lines[current].text : null,
+      );
+      if (controlCenterLyricsNotifier.value) updatePlaybackState();
 
       if (Platform.isIOS) {
         HomeWidgetService.updateLyricsIndex();
@@ -448,6 +449,16 @@ class MyAudioHandler extends BaseAudioHandler {
       _playQueueTmp.add(song);
     }
     return true;
+  }
+
+  /// Append an occurrence without deduplicating a mixed online/local queue.
+  void enqueueOccurrence(MyAudioMetadata song) {
+    playQueue.add(song);
+    if (playModeNotifier.value == 1 ||
+        (playModeNotifier.value == 2 && _tmpPlayMode == 1)) {
+      _playQueueTmp.add(song);
+    }
+    saveAllStates();
   }
 
   bool add2Last(MyAudioMetadata song) {

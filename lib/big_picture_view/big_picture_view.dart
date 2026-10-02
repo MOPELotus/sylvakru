@@ -3,7 +3,6 @@ import 'dart:ui';
 
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_gamepads/flutter_gamepads.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:smooth_corner/smooth_corner.dart';
 import 'package:sylvakru/base/app.dart';
@@ -124,21 +123,12 @@ class _BigPictureViewState extends State<BigPictureView> {
                     topNode.requestFocus();
                   }
                 },
-                child: GamepadInterceptor(
-                  onBeforeIntent: (activator, intent) {
-                    if (intent is DismissIntent) {
-                      topNode.requestFocus();
-                      return false;
-                    }
-                    return true;
+                child: PageView(
+                  controller: _pageController,
+                  onPageChanged: (value) {
+                    _currentIndexNotifier.value = value;
                   },
-                  child: PageView(
-                    controller: _pageController,
-                    onPageChanged: (value) {
-                      _currentIndexNotifier.value = value;
-                    },
-                    children: pages,
-                  ),
+                  children: pages,
                 ),
               ),
             ),
@@ -226,30 +216,170 @@ class _BigPictureViewState extends State<BigPictureView> {
             bottomNode.requestFocus();
           }
         },
-        child: GamepadInterceptor(
-          onBeforeIntent: (activator, intent) {
-            if (intent is DirectionalFocusIntent) {
-              if (intent.direction == .down) {
-                pageViewNode.requestFocus();
-              } else if (intent.direction == .up) {
-                bottomNode.requestFocus();
-              }
-            }
-            return true;
-          },
-          child: SizedBox(
-            height: 75,
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 1,
-                  child: Material(
-                    color: Colors.transparent,
-                    child: Row(
-                      children: [
-                        SizedBox(width: isMobile ? 10 : 20),
+        child: SizedBox(
+          height: 75,
+          child: Row(
+            children: [
+              Expanded(
+                flex: 1,
+                child: Material(
+                  color: Colors.transparent,
+                  child: Row(
+                    children: [
+                      SizedBox(width: isMobile ? 10 : 20),
 
-                        if (!isMobile && !isMaximizedNotifier.value)
+                      if (!isMobile && !isMaximizedNotifier.value)
+                        GlassContainer(
+                          settings: LiquidGlassSettings(
+                            glassColor: glassColor.value,
+                          ),
+                          shape: const LiquidRoundedSuperellipse(
+                            borderRadius: 30,
+                          ),
+                          child: IconButton(
+                            onPressed: () async {
+                              if (isFullScreenNotifier.value) {
+                                isFullScreenNotifier.value = false;
+                                await windowManager.setFullScreen(false);
+                              } else {
+                                isFullScreenNotifier.value = true;
+                                await windowManager.setFullScreen(true);
+                              }
+                            },
+                            icon: ImageIcon(
+                              isFullScreenNotifier.value
+                                  ? fullscreenExitImage
+                                  : fullscreenImage,
+                            ),
+                          ),
+                        ),
+                      // Expanded(
+                      //   child: GlassContainer(
+                      //     settings: LiquidGlassSettings(
+                      //       glassColor: glassColor.value,
+                      //     ),
+                      //     shape: const LiquidRoundedSuperellipse(
+                      //       borderRadius: 30,
+                      //     ),
+                      //     child: TextField(
+                      //       decoration: InputDecoration(
+                      //         prefixIcon: Icon(Icons.search),
+                      //         suffixIcon: IconButton(
+                      //           onPressed: () {},
+                      //           icon: const Icon(Icons.clear),
+                      //           padding: EdgeInsets.zero,
+                      //         ),
+                      //         filled: true,
+                      //         fillColor: Colors.transparent,
+                      //         contentPadding: EdgeInsets.zero,
+                      //         isDense: true,
+                      //         border: OutlineInputBorder(
+                      //           borderSide: BorderSide.none,
+                      //         ),
+                      //       ),
+                      //     ),
+                      //   ),
+                      // ),
+                      SizedBox(width: 30),
+                    ],
+                  ),
+                ),
+              ),
+              Expanded(
+                flex: 3,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return GlassContainer(
+                      settings: LiquidGlassSettings(
+                        glassColor: glassColor.value,
+                      ),
+                      shape: const LiquidRoundedSuperellipse(borderRadius: 30),
+                      clipBehavior: .antiAlias,
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minWidth: constraints.maxWidth,
+                          ),
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 15,
+                              vertical: 7.5,
+                            ),
+                            child: Row(
+                              mainAxisAlignment: .center,
+                              children: List.generate(tabs.length, (index) {
+                                return ValueListenableBuilder(
+                                  valueListenable: _currentIndexNotifier,
+                                  builder: (context, value, child) {
+                                    return ValueListenableBuilder(
+                                      valueListenable:
+                                          selectedItemColor.valueNotifier,
+                                      builder: (context, colorValue, child) {
+                                        return Material(
+                                          shape: SmoothRectangleBorder(
+                                            smoothness: 1,
+                                            borderRadius: .circular(25),
+                                          ),
+                                          color: index == value
+                                              ? colorValue
+                                              : Colors.transparent,
+                                          clipBehavior: .antiAlias,
+                                          child: child,
+                                        );
+                                      },
+                                      child: ScaleWidget(
+                                        onTap: () {
+                                          _pageController.animateToPage(
+                                            index,
+                                            duration: const Duration(
+                                              milliseconds: 300,
+                                            ),
+                                            curve: Curves.easeOut,
+                                          );
+                                        },
+                                        needFocusColor: true,
+                                        autoFocus: index == 0,
+                                        child: Padding(
+                                          padding: EdgeInsets.symmetric(
+                                            horizontal: 15,
+                                            vertical: isMobile ? 4 : 0,
+                                          ),
+                                          child: Text(
+                                            tabs[index],
+                                            style: TextStyle(
+                                              fontSize: 18.5,
+                                              fontWeight: FontWeight.bold,
+                                              color: index == value
+                                                  ? textColor.value
+                                                  : textColor.value.withAlpha(
+                                                      128,
+                                                    ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                );
+                              }),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+
+              Expanded(
+                flex: 1,
+                child: isTV
+                    ? SizedBox.shrink()
+                    : Row(
+                        mainAxisAlignment: .end,
+
+                        children: [
                           GlassContainer(
                             settings: LiquidGlassSettings(
                               glassColor: glassColor.value,
@@ -257,175 +387,20 @@ class _BigPictureViewState extends State<BigPictureView> {
                             shape: const LiquidRoundedSuperellipse(
                               borderRadius: 30,
                             ),
-                            child: IconButton(
-                              onPressed: () async {
-                                if (isFullScreenNotifier.value) {
-                                  isFullScreenNotifier.value = false;
-                                  await windowManager.setFullScreen(false);
-                                } else {
-                                  isFullScreenNotifier.value = true;
-                                  await windowManager.setFullScreen(true);
-                                }
-                              },
-                              icon: ImageIcon(
-                                isFullScreenNotifier.value
-                                    ? fullscreenExitImage
-                                    : fullscreenImage,
-                              ),
-                            ),
-                          ),
-                        // Expanded(
-                        //   child: GlassContainer(
-                        //     settings: LiquidGlassSettings(
-                        //       glassColor: glassColor.value,
-                        //     ),
-                        //     shape: const LiquidRoundedSuperellipse(
-                        //       borderRadius: 30,
-                        //     ),
-                        //     child: TextField(
-                        //       decoration: InputDecoration(
-                        //         prefixIcon: Icon(Icons.search),
-                        //         suffixIcon: IconButton(
-                        //           onPressed: () {},
-                        //           icon: const Icon(Icons.clear),
-                        //           padding: EdgeInsets.zero,
-                        //         ),
-                        //         filled: true,
-                        //         fillColor: Colors.transparent,
-                        //         contentPadding: EdgeInsets.zero,
-                        //         isDense: true,
-                        //         border: OutlineInputBorder(
-                        //           borderSide: BorderSide.none,
-                        //         ),
-                        //       ),
-                        //     ),
-                        //   ),
-                        // ),
-                        SizedBox(width: 30),
-                      ],
-                    ),
-                  ),
-                ),
-                Expanded(
-                  flex: 3,
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      return GlassContainer(
-                        settings: LiquidGlassSettings(
-                          glassColor: glassColor.value,
-                        ),
-                        shape: const LiquidRoundedSuperellipse(
-                          borderRadius: 30,
-                        ),
-                        clipBehavior: .antiAlias,
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                              minWidth: constraints.maxWidth,
-                            ),
                             child: Padding(
                               padding: EdgeInsets.symmetric(
-                                horizontal: 15,
-                                vertical: 7.5,
+                                horizontal: windowsControl!.children.length > 1
+                                    ? 10.0
+                                    : 0,
                               ),
-                              child: Row(
-                                mainAxisAlignment: .center,
-                                children: List.generate(tabs.length, (index) {
-                                  return ValueListenableBuilder(
-                                    valueListenable: _currentIndexNotifier,
-                                    builder: (context, value, child) {
-                                      return ValueListenableBuilder(
-                                        valueListenable:
-                                            selectedItemColor.valueNotifier,
-                                        builder: (context, colorValue, child) {
-                                          return Material(
-                                            shape: SmoothRectangleBorder(
-                                              smoothness: 1,
-                                              borderRadius: .circular(25),
-                                            ),
-                                            color: index == value
-                                                ? colorValue
-                                                : Colors.transparent,
-                                            clipBehavior: .antiAlias,
-                                            child: child,
-                                          );
-                                        },
-                                        child: ScaleWidget(
-                                          onTap: () {
-                                            _pageController.animateToPage(
-                                              index,
-                                              duration: const Duration(
-                                                milliseconds: 300,
-                                              ),
-                                              curve: Curves.easeOut,
-                                            );
-                                          },
-                                          needFocusColor: true,
-                                          autoFocus: index == 0,
-                                          child: Padding(
-                                            padding: EdgeInsets.symmetric(
-                                              horizontal: 15,
-                                              vertical: isMobile ? 4 : 0,
-                                            ),
-                                            child: Text(
-                                              tabs[index],
-                                              style: TextStyle(
-                                                fontSize: 18.5,
-                                                fontWeight: FontWeight.bold,
-                                                color: index == value
-                                                    ? textColor.value
-                                                    : textColor.value.withAlpha(
-                                                        128,
-                                                      ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  );
-                                }),
-                              ),
+                              child: windowsControl,
                             ),
                           ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-
-                Expanded(
-                  flex: 1,
-                  child: isTV
-                      ? SizedBox.shrink()
-                      : Row(
-                          mainAxisAlignment: .end,
-
-                          children: [
-                            GlassContainer(
-                              settings: LiquidGlassSettings(
-                                glassColor: glassColor.value,
-                              ),
-                              shape: const LiquidRoundedSuperellipse(
-                                borderRadius: 30,
-                              ),
-                              child: Padding(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal:
-                                      windowsControl!.children.length > 1
-                                      ? 10.0
-                                      : 0,
-                                ),
-                                child: windowsControl,
-                              ),
-                            ),
-                            SizedBox(width: isMobile ? 10 : 20),
-                          ],
-                        ),
-                ),
-              ],
-            ),
+                          SizedBox(width: isMobile ? 10 : 20),
+                        ],
+                      ),
+              ),
+            ],
           ),
         ),
       ),
@@ -450,85 +425,65 @@ class _BigPictureViewState extends State<BigPictureView> {
             pageViewNode.requestFocus();
           }
         },
-        child: GamepadInterceptor(
-          onBeforeIntent: (activator, intent) {
-            if (intent is DirectionalFocusIntent) {
-              if (intent.direction == .down) {
-                topNode.requestFocus();
-                return false;
-              } else if (intent.direction == .up) {
-                pageViewNode.requestFocus();
-                return false;
-              }
-            } else if (intent is DismissIntent) {
-              topNode.requestFocus();
-              return false;
-            }
-            return true;
-          },
-          child: Row(
-            mainAxisAlignment: .center,
-            children: [
-              Expanded(flex: 1, child: SizedBox.shrink()),
-              Expanded(flex: 3, child: Center(child: BigPlayBar())),
-              Expanded(
-                flex: 1,
-                child: ValueListenableBuilder(
-                  valueListenable: _currentIndexNotifier,
-                  builder: (context, value, child) {
-                    if (value == 0 ||
-                        value == 4 ||
-                        value >= 7 ||
-                        (sourceType == .navidrome &&
-                            (value == 5 || value == 6))) {
-                      return SizedBox.shrink();
-                    }
-                    return Row(
-                      mainAxisAlignment: .end,
-                      children: [
-                        GlassContainer(
-                          settings: LiquidGlassSettings(
-                            glassColor: glassColor.value,
-                          ),
-                          shape: const LiquidRoundedSuperellipse(
-                            borderRadius: 30,
-                          ),
-                          child: IconButton(
-                            onPressed: () {
-                              switch (value) {
-                                case 1:
-                                  showSongListOptions(
-                                    context,
-                                    library.songList,
-                                  );
-                                case 2:
-                                  showArtistsAlbumsOptions(context, true);
-                                case 3:
-                                  showArtistsAlbumsOptions(context, false);
-                                case 5:
-                                  showSongListOptions(
-                                    context,
-                                    history.frequentlySongList,
-                                  );
-                                case 6:
-                                  showSongListOptions(
-                                    context,
-                                    history.recentlySongList,
-                                  );
-                                default:
-                              }
-                            },
-                            icon: ImageIcon(optionImage),
-                          ),
+        child: Row(
+          mainAxisAlignment: .center,
+          children: [
+            Expanded(flex: 1, child: SizedBox.shrink()),
+            Expanded(flex: 3, child: Center(child: BigPlayBar())),
+            Expanded(
+              flex: 1,
+              child: ValueListenableBuilder(
+                valueListenable: _currentIndexNotifier,
+                builder: (context, value, child) {
+                  if (value == 0 ||
+                      value == 4 ||
+                      value >= 7 ||
+                      (sourceType == .navidrome &&
+                          (value == 5 || value == 6))) {
+                    return SizedBox.shrink();
+                  }
+                  return Row(
+                    mainAxisAlignment: .end,
+                    children: [
+                      GlassContainer(
+                        settings: LiquidGlassSettings(
+                          glassColor: glassColor.value,
                         ),
-                        SizedBox(width: isMobile ? 10 : 20),
-                      ],
-                    );
-                  },
-                ),
+                        shape: const LiquidRoundedSuperellipse(
+                          borderRadius: 30,
+                        ),
+                        child: IconButton(
+                          onPressed: () {
+                            switch (value) {
+                              case 1:
+                                showSongListOptions(context, library.songList);
+                              case 2:
+                                showArtistsAlbumsOptions(context, true);
+                              case 3:
+                                showArtistsAlbumsOptions(context, false);
+                              case 5:
+                                showSongListOptions(
+                                  context,
+                                  history.frequentlySongList,
+                                );
+                              case 6:
+                                showSongListOptions(
+                                  context,
+                                  history.recentlySongList,
+                                );
+                              default:
+                            }
+                          },
+                          icon: ImageIcon(optionImage),
+                        ),
+                      ),
+                      SizedBox(width: isMobile ? 10 : 20),
+                    ],
+                  );
+                },
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

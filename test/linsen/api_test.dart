@@ -4,6 +4,33 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sylvakru/linsen/tuneweave_api.dart';
 
 void main() {
+  test('List payloads retain metadata credential rotation', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final api = TuneWeaveApi(Uri.parse('http://127.0.0.1:${server.port}'));
+    api.credentials['netease'] = 'before';
+    final served = server.first.then((request) async {
+      request.response.write(
+        jsonEncode({
+          'ok': true,
+          'data': [
+            {'ref': 'netease:track:1'},
+          ],
+          'meta': {
+            'caller_credential': {'platform': 'netease', 'value': 'after'},
+          },
+        }),
+      );
+      await request.response.close();
+    });
+    final items = await api.data('GET', '/v1/account/favorites/tracks');
+    expect(items, [
+      {'ref': 'netease:track:1'},
+    ]);
+    expect(api.credentials['netease'], 'after');
+    await served;
+    api.close();
+    await server.close(force: true);
+  });
   test(
     'Repeated credentials and runtime authentication; rotation on errors',
     () async {
