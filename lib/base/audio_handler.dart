@@ -140,6 +140,9 @@ class MyAudioHandler extends BaseAudioHandler {
 
     _player.stream.completed.listen((completed) async {
       if (completed) {
+        // Completion from the old stream or a failed open must not pause or
+        // advance the queue while a replacement is being loaded.
+        if (loadingSong || _recovering) return;
         final position = _player.state.position;
         final duration = _player.state.duration;
 
@@ -679,7 +682,12 @@ class MyAudioHandler extends BaseAudioHandler {
         return;
       }
       final position = _player.state.position;
-      final media = linsen.playingMedia[song.id]!;
+      if (song.cacheExist) {
+        await linsen.invalidateCachedSong(song);
+        if (epoch != _loadGeneration) return;
+      }
+      final media = linsen.playingMedia[song.id];
+      if (media == null) return;
       final index = _recoverAttempts++;
       final backup = media.backupUrls
           .where((url) {
@@ -699,6 +707,8 @@ class MyAudioHandler extends BaseAudioHandler {
         _recoverAttempts = 3;
         final refreshed = await linsen.resolveSong(song, refresh: true);
         if (refreshed == null || epoch != _loadGeneration) return;
+        await setParsedLyrics(song);
+        if (epoch != _loadGeneration) return;
         await linsen.outbox.start(
           refreshed,
           refreshed.durationMs ?? song.duration?.inMilliseconds,
@@ -829,8 +839,14 @@ class MyAudioHandler extends BaseAudioHandler {
         _playLastSyncTime = DateTime.now();
       }
     } catch (error) {
-      stop();
       logger.output("[${currentSong.title}] $error");
+      if (epoch != _loadGeneration) return;
+      loadingSong = false;
+      if (linsen.isOnline(currentSong)) {
+        await _recoverOnline();
+      } else {
+        await stop();
+      }
     }
 
     updateServiceMediaItem(currentSong);

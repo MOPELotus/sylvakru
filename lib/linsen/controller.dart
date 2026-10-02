@@ -15,6 +15,7 @@ import 'availability.dart';
 import 'runtime.dart';
 import 'scrobble.dart';
 import 'lyrics.dart';
+import 'recording_cache.dart';
 import 'tuneweave_api.dart';
 
 final linsen = LinsenController();
@@ -35,6 +36,7 @@ class LinsenController extends ChangeNotifier {
   late final availability = AvailabilityResolver(_resolve);
   final Map<String, Map<String, dynamic>> entries = {};
   final Map<String, ResolvedMedia> playingMedia = {};
+  final _recordings = RecordingCache();
   late final outbox = ScrobbleOutbox(
     file: File('${appSupportDir.path}/linsen/scrobbles.json'),
     api: () => api,
@@ -231,14 +233,9 @@ class LinsenController extends ChangeNotifier {
         if (candidate['source_ref'] != key) continue;
         final cached = library.id2Song[candidate['id']];
         if (cached != null && cached.cacheExist && candidate['cloud'] != true) {
-          try {
-            final manifest = jsonDecode(
-              await File('${cached.cachePath}.json').readAsString(),
-            );
-            return ResolvedMedia(Map<String, dynamic>.from(manifest as Map));
-          } catch (_) {
-            // A broken manifest does not recursively acquire a resolver slot.
-          }
+          final manifest = await _recordings.read(cached.cachePath!);
+          if (manifest != null) return ResolvedMedia(manifest);
+          _setCacheFlags(cached.cachePath!, false);
         }
       }
       final data = await service.data(
@@ -294,25 +291,42 @@ class LinsenController extends ChangeNotifier {
           '该云盘缓存属于另一账号',
         );
       }
-      final raw = Map<String, dynamic>.from(
-        jsonDecode(await File('${song.cachePath}.json').readAsString()) as Map,
-      );
-      if (raw['lyrics'] is Map) {
-        final lyrics = raw['lyrics'] as Map;
-        final parsed = ParsedLyrics();
-        parsed.isKaraoke = lyrics['is_karaoke'] == true;
-        parsed.lines = (lyrics['lines'] as List)
-            .map((line) => LyricLine.fromMap(line as Map))
-            .toList();
-        song.parsedLyrics = parsed;
+      final raw = await _recordings.read(song.cachePath!);
+      if (raw != null) {
+        song.parsedLyrics = null;
+        if (raw['lyrics'] is Map) {
+          try {
+            final lyrics = raw['lyrics'] as Map;
+            final parsed = ParsedLyrics();
+            parsed.isKaraoke = lyrics['is_karaoke'] == true;
+            parsed.lines = (lyrics['lines'] as List)
+                .map((line) => LyricLine.fromMap(line as Map))
+                .toList();
+            song.parsedLyrics = parsed;
+          } catch (_) {
+            // Invalid optional lyrics must not hide a valid offline recording.
+          }
+        }
+        song.parsedLyrics ??= ParsedLyrics()
+          ..lines.add(LyricLine(Duration.zero, '暂无歌词', []));
+        playingMedia[song.id] = ResolvedMedia(raw);
+        return playingMedia[song.id];
       }
-      playingMedia[song.id] = ResolvedMedia(raw);
-      return playingMedia[song.id];
+      await invalidateCachedSong(song);
     }
     final media = await availability.check(song.id, refresh: refresh);
     playingMedia[song.id] = media;
-    // Fetch lyrics for the actual resolved recording, never for an unrelated origin.
-    song.parsedLyrics = null;
+    song.parsedLyrics = await _lyricsFor(song, media);
+    notifyListeners();
+    return media;
+  }
+
+  // Fetch lyrics for the actual resolved recording, never for an unrelated origin.
+  Future<ParsedLyrics> _lyricsFor(
+    MyAudioMetadata song,
+    ResolvedMedia media,
+  ) async {
+    ParsedLyrics? parsed;
     try {
       dynamic data;
       if (entries[song.id]?['cloud'] == true) {
@@ -341,31 +355,69 @@ class LinsenController extends ChangeNotifier {
         );
       }
       if (data is Map) {
-        song.parsedLyrics = parseTuneWeaveLyrics(
+        parsed = parseTuneWeaveLyrics(
           Map<String, dynamic>.from(data),
-          duration: song.duration,
+          duration: media.durationMs == null
+              ? song.duration
+              : Duration(milliseconds: media.durationMs!),
         );
       }
     } catch (_) {
       /* Lyrics failure must not prevent playback. */
     }
-    song.parsedLyrics ??= ParsedLyrics()
-      ..lines.add(LyricLine(Duration.zero, '暂无歌词', []));
-    notifyListeners();
-    return media;
+    return parsed ??
+        (ParsedLyrics()..lines.add(LyricLine(Duration.zero, '暂无歌词', [])));
   }
 
-  Future<void> cacheSong(MyAudioMetadata song) async {
-    if (!isOnline(song) || song.cacheExist || song.cachePath == null) return;
-    final temporary = File('${song.cachePath}.part');
-    if (await temporary.exists()) return;
+  void _setCacheFlags(String path, bool exists) {
+    for (final candidate in library.id2Song.values) {
+      if (candidate.cachePath == path && isOnline(candidate)) {
+        candidate.cacheExist = exists;
+      }
+    }
+  }
+
+  Future<void> invalidateCachedSong(MyAudioMetadata song) async {
+    final path = song.cachePath;
+    if (!isOnline(song) || path == null) return;
+    _setCacheFlags(path, false);
+    availability.invalidate();
+    try {
+      await _recordings.invalidate(path);
+    } catch (_) {
+      // A locked file must not prevent trying an online replacement.
+    }
+  }
+
+  Future<void> cacheSong(MyAudioMetadata song) {
+    if (!isOnline(song) || song.cachePath == null) return Future<void>.value();
+    return _recordings.downloadOnce(song.cachePath!, () => _cacheSong(song));
+  }
+
+  Future<void> _cacheSong(MyAudioMetadata song) async {
+    final path = song.cachePath!;
+    if (await _recordings.read(path) != null) {
+      _setCacheFlags(path, true);
+      return;
+    }
+    _setCacheFlags(path, false);
+    final temporary = File('$path.part');
     final client = service;
     final generation = client.generation;
     final http = HttpClient()..connectionTimeout = const Duration(seconds: 15);
     try {
       final media = await availability.check(song.id);
       if (media.isTrial) return;
+      final parsed =
+          playingMedia[song.id]?.reference == media.reference &&
+              playingMedia[song.id]?.platform == media.platform &&
+              song.parsedLyrics != null
+          ? song.parsedLyrics!
+          : await _lyricsFor(song, media);
+      if (generation != client.generation) return;
       await temporary.parent.create(recursive: true);
+      // No other in-process download owns this path; reclaim crash leftovers.
+      if (await temporary.exists()) await temporary.delete();
       await temporary.create(exclusive: true);
       final request = await http.getUrl(Uri.parse(media.url));
       request.followRedirects = false;
@@ -399,20 +451,14 @@ class LinsenController extends ChangeNotifier {
         'actual_quality': media.quality,
         'bitrate': media.bitrate,
         'duration_ms': media.durationMs,
-        if (song.parsedLyrics != null)
-          'lyrics': {
-            'is_karaoke': song.parsedLyrics!.isKaraoke,
-            'lines': song.parsedLyrics!.lines
-                .map((line) => line.toMap())
-                .toList(),
-          },
+        'lyrics': {
+          'is_karaoke': parsed.isKaraoke,
+          'lines': parsed.lines.map((line) => line.toMap()).toList(),
+        },
         if (media.isTrial) 'trial': media.raw['trial'],
       };
-      await File(
-        '${song.cachePath}.json',
-      ).writeAsString(jsonEncode(manifest), flush: true);
-      await temporary.rename(song.cachePath!);
-      song.cacheExist = true;
+      await _recordings.publish(path, temporary, manifest);
+      if (generation == client.generation) _setCacheFlags(path, true);
     } catch (_) {
       /* A cache failure does not interrupt playback. */
     } finally {
