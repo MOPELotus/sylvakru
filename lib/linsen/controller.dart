@@ -1,0 +1,337 @@
+// Copyright 2026 MOPELotus. Linsen additions, Apache-2.0.
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'package:audio_tags_lofty/audio_tags_lofty.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../base/app.dart';
+import '../base/data/library.dart';
+import '../base/my_audio_metadata.dart';
+import '../base/services/lyric.dart';
+import '../base/services/picture_service.dart';
+import 'availability.dart';
+import 'runtime.dart';
+import 'scrobble.dart';
+import 'lyrics.dart';
+import 'tuneweave_api.dart';
+
+final linsen = LinsenController();
+const platformNames = <String, String>{
+  'all': '全部平台',
+  'netease': '网易云',
+  'qq': 'QQ音乐',
+  'kugou': '酷狗',
+  'kuwo': '酷我',
+  'migu': '咪咕',
+  'soda': '汽水',
+  'bilibili': '哔哩哔哩',
+  'local': '本地',
+};
+
+class LinsenController extends ChangeNotifier {
+  TuneWeaveApi? api;
+  late final availability = AvailabilityResolver(_resolve);
+  final Map<String, Map<String, dynamic>> entries = {};
+  final Map<String, ResolvedMedia> playingMedia = {};
+  late final outbox = ScrobbleOutbox(
+    file: File('${appSupportDir.path}/linsen/scrobbles.json'),
+    api: () => api,
+    account: () => neteaseAccountIdentity(api),
+    enabled: () => scrobbleEnabled,
+  );
+  final _secure = const FlutterSecureStorage();
+  String? problem;
+  String? remoteEndpoint;
+  String playbackPlatform = 'auto';
+  bool scrobbleEnabled = true;
+  Future<void> _writeTail = Future.value();
+  File get _file => File('${appSupportDir.path}/linsen/client.json');
+
+  Future<void> initialize() async {
+    try {
+      if (await _file.exists()) {
+        final data = jsonDecode(await _file.readAsString()) as Map;
+        remoteEndpoint = data['remote_endpoint'] as String?;
+        playbackPlatform = data['playback_platform'] as String? ?? 'auto';
+        scrobbleEnabled = data['scrobble_enabled'] != false;
+        for (final item in data['entries'] as List? ?? []) {
+          final entry = Map<String, dynamic>.from(item as Map);
+          entries[entry['id'] as String] = entry;
+        }
+      }
+      await connect(remoteEndpoint);
+    } catch (_) {
+      problem = '音乐服务启动失败，请在账号与服务中检查配置';
+    }
+    await outbox.initialize();
+    restoreEntries();
+    notifyListeners();
+  }
+
+  Future<void> connect(String? remote) async {
+    Uri endpoint;
+    String? token;
+    if (remote == null || remote.trim().isEmpty) {
+      final runtime = await TuneWeaveRuntime.start(
+        '${appSupportDir.path}/linsen/runtime',
+      );
+      endpoint = Uri.parse(runtime['endpoint'] as String);
+      token = runtime['token'] as String;
+      remote = null;
+    } else {
+      endpoint = Uri.parse(remote.trim());
+      if (!const {'http', 'https'}.contains(endpoint.scheme) ||
+          endpoint.host.isEmpty ||
+          endpoint.userInfo.isNotEmpty ||
+          endpoint.hasQuery ||
+          endpoint.hasFragment) {
+        throw const TuneWeaveException('invalid_request', '请输入完整 HTTP(S) 服务地址');
+      }
+    }
+    final next = TuneWeaveApi(
+      endpoint,
+      runtimeToken: token,
+      saveCredential: (platform, value) async {
+        if (value == null) {
+          await _secure.delete(key: 'linsen.$platform');
+        } else {
+          await _secure.write(key: 'linsen.$platform', value: value);
+        }
+        availability.invalidate();
+        notifyListeners();
+      },
+    );
+    for (final platform in platformNames.keys.where(
+      (p) => p != 'all' && p != 'local',
+    )) {
+      final value = await _secure.read(key: 'linsen.$platform');
+      if (value != null) next.credentials[platform] = value;
+    }
+    try {
+      await next.data('GET', '/healthz', authenticated: false);
+    } catch (_) {
+      next.close();
+      rethrow;
+    }
+    api?.close();
+    api = next;
+    remoteEndpoint = remote;
+    problem = null;
+    availability.invalidate();
+    await persist();
+    notifyListeners();
+  }
+
+  Future<void> persist() {
+    final content = jsonEncode({
+      'remote_endpoint': remoteEndpoint,
+      'playback_platform': playbackPlatform,
+      'scrobble_enabled': scrobbleEnabled,
+      'entries': entries.values.toList(),
+    });
+    _writeTail = _writeTail.catchError((Object _) {}).then((_) async {
+      await _file.parent.create(recursive: true);
+      final temporary = File('${_file.path}.tmp');
+      await temporary.writeAsString(content, flush: true);
+      if (Platform.isWindows && await _file.exists()) await _file.delete();
+      await temporary.rename(_file.path);
+    });
+    return _writeTail;
+  }
+
+  TuneWeaveApi get service =>
+      api ?? (throw const TuneWeaveException('service_unavailable', '音乐服务未连接'));
+  bool isOnline(MyAudioMetadata song) => entries.containsKey(song.id);
+  void restoreEntries() {
+    for (final entry in entries.values) {
+      _register(entry);
+    }
+  }
+
+  MyAudioMetadata _register(Map<String, dynamic> entry) {
+    final snapshot = entry['snapshot'] as Map? ?? {};
+    final song = MyAudioMetadata(
+      AudioMetadata(
+        title: snapshot['title'] as String? ?? '未命名歌曲',
+        artist: (snapshot['artists'] as List? ?? []).join('/'),
+        album: snapshot['album'] as String?,
+        duration: snapshot['duration_ms'] == null
+            ? null
+            : Duration(milliseconds: (snapshot['duration_ms'] as num).toInt()),
+      ),
+      id: entry['id'] as String,
+      path: entry['source_ref'] as String,
+    );
+    song.picture = MyPicture.form(snapshot['cover_url'] as String? ?? '');
+    library.id2Song[song.id] = song;
+    return song;
+  }
+
+  Future<MyAudioMetadata> materialize(
+    Map<String, dynamic> track, {
+    bool cloud = false,
+  }) async {
+    final reference = track['ref'] as String;
+    if (cloud) {
+      // Cloud identity is account-private and must never be replaced by matched_track_ref.
+      final id = 'cloud:$reference';
+      final entry = <String, dynamic>{
+        'id': id,
+        'source_ref': reference,
+        'cloud': true,
+        'snapshot': {
+          'title': track['name'],
+          'artists': (track['artists'] as List? ?? [])
+              .map((e) => e['name'])
+              .toList(),
+          'album': (track['album'] as Map?)?['name'],
+          'duration_ms': track['duration_ms'],
+        },
+      };
+      entries[id] = entry;
+      await persist();
+      return _register(entry);
+    }
+    final result = await service.data(
+      'POST',
+      '/v1/uni/materialize/items',
+      body: {
+        'items': [
+          {'ref': reference, 'kind': 'track'},
+        ],
+      },
+    );
+    final entry = Map<String, dynamic>.from(
+      (result['items'] as List).single as Map,
+    );
+    entries[entry['id'] as String] = entry;
+    await persist();
+    return _register(entry);
+  }
+
+  Future<ResolvedMedia> _resolve(String key) async {
+    final entry = entries[key];
+    if (entry == null) {
+      final data = await service.data(
+        'GET',
+        '/v1/tracks/${Uri.encodeComponent(key)}/stream',
+        query: {
+          'quality': 'auto',
+          'fallback': true,
+          'unblock': true,
+          if (playbackPlatform != 'auto') 'playback_platform': playbackPlatform,
+        },
+      );
+      return ResolvedMedia(Map<String, dynamic>.from(data as Map));
+    }
+    if (entry['cloud'] == true) {
+      final data = await service.data(
+        'GET',
+        '/v1/account/cloud/tracks/${Uri.encodeComponent(entry['source_ref'] as String)}/download',
+      );
+      return ResolvedMedia(Map<String, dynamic>.from(data as Map));
+    }
+    final data = await service.data(
+      'POST',
+      '/v1/uni/items/stream',
+      body: {
+        'item': entry,
+        'quality': 'auto',
+        'fallback': true,
+        'unblock': true,
+        if (playbackPlatform != 'auto') 'playback_platform': playbackPlatform,
+      },
+    );
+    return ResolvedMedia(Map<String, dynamic>.from(data['stream'] as Map));
+  }
+
+  Future<ResolvedMedia?> resolveSong(
+    MyAudioMetadata song, {
+    bool refresh = false,
+  }) async {
+    if (!isOnline(song)) return null;
+    final media = await availability.check(song.id, refresh: refresh);
+    playingMedia[song.id] = media;
+    // Fetch lyrics for the actual resolved recording, never for an unrelated origin.
+    song.parsedLyrics = null;
+    try {
+      dynamic data;
+      if (entries[song.id]?['cloud'] == true) {
+        final profile = await service.data(
+          'GET',
+          '/v1/account/profile',
+          query: {'platform': 'netease'},
+        );
+        final uid = (profile['user']['ref'] as String)
+            .split(':')
+            .skip(1)
+            .join(':');
+        final sid = (entries[song.id]!['source_ref'] as String)
+            .split(':')
+            .skip(1)
+            .join(':');
+        data = await service.data(
+          'GET',
+          '/v1/account/cloud/lyrics',
+          query: {'platform': 'netease', 'uid': uid, 'sid': sid},
+        );
+      } else if (media.reference.isNotEmpty) {
+        data = await service.data(
+          'GET',
+          '/v1/tracks/${Uri.encodeComponent(media.reference)}/lyrics',
+        );
+      }
+      if (data is Map) {
+        song.parsedLyrics = parseTuneWeaveLyrics(
+          Map<String, dynamic>.from(data),
+          duration: song.duration,
+        );
+      }
+    } catch (_) {
+      /* Lyrics failure must not prevent playback. */
+    }
+    song.parsedLyrics ??= ParsedLyrics()
+      ..lines.add(LyricLine(Duration.zero, '暂无歌词', []));
+    notifyListeners();
+    return media;
+  }
+
+  Future<void> logout(String platform) async {
+    service.invalidate();
+    service.credentials.remove(platform);
+    await _secure.delete(key: 'linsen.$platform');
+    if (platform == 'netease') {
+      await _secure.delete(key: 'linsen.netease.identity');
+    }
+    availability.invalidate();
+    notifyListeners();
+  }
+
+  Future<void> importCookie(String platform, String value) async {
+    service.invalidate();
+    if (platform == 'netease') {
+      await outbox.finish();
+      await _secure.delete(key: 'linsen.netease.identity');
+    }
+    await service.data(
+      'POST',
+      '/v1/auth/import',
+      authenticated: false,
+      body: {
+        'platform': platform,
+        'credential_mode': 'client',
+        'credential': {'kind': 'cookie', 'value': value},
+      },
+    );
+    availability.invalidate();
+    notifyListeners();
+  }
+
+  Future<void> setPlaybackPlatform(String value) async {
+    playbackPlatform = value;
+    availability.invalidate();
+    await persist();
+    notifyListeners();
+  }
+}

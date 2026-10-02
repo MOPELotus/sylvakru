@@ -1,3 +1,5 @@
+// Modified 2026 MOPELotus: restore TuneWeave items before restoring the queue.
+import 'package:sylvakru/linsen/controller.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -65,6 +67,7 @@ class Loader {
     }
 
     await library.load();
+    linsen.restoreEntries();
 
     audioHandler.loadStates();
 

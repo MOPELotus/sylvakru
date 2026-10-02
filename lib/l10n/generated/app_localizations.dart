@@ -101,7 +101,7 @@ abstract class AppLocalizations {
   /// No description provided for @sylvakru.
   ///
   /// In en, this message translates to:
-  /// **'Sylvakru'**
+  /// **'Linsen'**
   String get sylvakru;
 
   /// No description provided for @title.

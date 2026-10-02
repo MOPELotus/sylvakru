@@ -54,6 +54,7 @@ add_subdirectory(${FLUTTER_MANAGED_DIR})
 # System-level dependencies.
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
+pkg_check_modules(EPOXY REQUIRED IMPORTED_TARGET epoxy)
 
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
@@ -129,3 +130,6 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
 endif()
 
 target_link_libraries(${BINARY_NAME} PRIVATE ${MIMALLOC_LIB})
+
+# Linsen embedded TuneWeave runtime (built before Flutter).
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../native/libs/liblinsen_tuneweave.so" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT Runtime)

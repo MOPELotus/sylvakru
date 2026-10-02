@@ -1,0 +1,31 @@
+[package]
+name = "linsen-tuneweave-runtime"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[lib]
+name = "linsen_tuneweave"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+axum = "0.8.9"
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "net", "sync", "time"] }
+serde_json = "1.0"
+rand = "0.10.2"
+tuneweave-core = { git = "https://github.com/MOPELotus/TuneWeave", rev = "da3fde212ff45568b743377dee91b0b2e83a8989" }
+tuneweave-server = { git = "https://github.com/MOPELotus/TuneWeave", rev = "da3fde212ff45568b743377dee91b0b2e83a8989" }
+tuneweave-provider-netease = { git = "https://github.com/MOPELotus/TuneWeave", rev = "da3fde212ff45568b743377dee91b0b2e83a8989" }
+tuneweave-provider-qq = { git = "https://github.com/MOPELotus/TuneWeave", rev = "da3fde212ff45568b743377dee91b0b2e83a8989" }
+tuneweave-provider-bilibili = { git = "https://github.com/MOPELotus/TuneWeave", rev = "da3fde212ff45568b743377dee91b0b2e83a8989" }
+tuneweave-provider-kugou = { git = "https://github.com/MOPELotus/TuneWeave", rev = "da3fde212ff45568b743377dee91b0b2e83a8989" }
+tuneweave-provider-kuwo = { git = "https://github.com/MOPELotus/TuneWeave", rev = "da3fde212ff45568b743377dee91b0b2e83a8989" }
+tuneweave-provider-migu = { git = "https://github.com/MOPELotus/TuneWeave", rev = "da3fde212ff45568b743377dee91b0b2e83a8989" }
+tuneweave-provider-soda = { git = "https://github.com/MOPELotus/TuneWeave", rev = "da3fde212ff45568b743377dee91b0b2e83a8989" }
+
+[profile.release]
+opt-level = "z"
+lto = "thin"
+strip = "symbols"
+
+[workspace]

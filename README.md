@@ -1,186 +1,42 @@
-<div align="center">
-  <img src="./app_icons/icon.png" width="160" alt="Sylvakru Icon"/>
+# 聆序 / Linsen
 
-  <br />
+基于 Sylvakru 和 TuneWeave 的私人音乐播放器，核心是搜索、音乐库、播放和歌词。
+本地与在线歌曲可以混合排队。推荐、热搜和社区永久不在产品范围内。
 
-  # Sylvakru (森露)
+默认启动设备内嵌 TuneWeave；在首页「账号与服务」可改用远程 HTTP(S) 服务。
+账号按平台管理，Cookie 导入后转换为 TuneWeave Client mode 凭据，保存在系统安全存储。
+搜索范围与播放选源独立：切换浏览平台不切换正在播放的队列。
+默认开启跨平台回退、Unblock 和严格匹配，只有完整解析链确认没有可用源才置灰。
 
-  _“A private music oasis in the digital world.”_
+在线队列条目使用 TuneWeave Uni item；本地索引、重复项及队列顺序由现有播放器保存。
+平台歌单直接读写账号，不提供额外云同步。云盘上传支持当前传输内继续，进程结束后需重新开始。
+播放上报默认开启，仅上报实际网易云媒体；不确定是否送达的上报不自动重复。
 
-</div>
+## 开发
 
-Sylvakru is a cross-platform music player for local libraries and self-hosted media services, supporting Android, iOS, Windows, Linux, and macOS.
+Flutter 3.47.5，Rust 1.98.1；依赖锁与 TuneWeave 源码版本均已固定。
 
-Currently supports:
-- Local
-- WebDAV
-- Navidrome
-- Emby
-- Feiniu Music (Special thanks to [huya688zdx](https://github.com/huya688zdx) for the contribution)
-
-
-
-> Formerly known as Particle Music.
-
-> [!Note]
-> **The iOS version is now available on the Apple App Store!**
-
-## USB Exclusive Mode(Android)
-
-Special thanks to [huya688zdx](https://github.com/huya688zdx) for maintaining USB Exclusive Mode support.
-
-If you need USB Exclusive Mode, please check out this [fork](https://github.com/huya688zdx/sylvakru)
-
-
-## Supported Formats
-
-| File Format | Metadata Format(s)           |
-|-------------|------------------------------|
-| AAC (ADTS)  | `ID3v2`, `ID3v1`             |
-| Ape         | `APE`, `ID3v2`\*, `ID3v1`    |
-| AIFF        | `ID3v2`, `Text Chunks`       |
-| FLAC        | `Vorbis Comments`, `ID3v2`\* |
-| MP3         | `ID3v2`, `ID3v1`, `APE`      |
-| MP4         | `iTunes-style ilst`          |
-| MPC         | `APE`, `ID3v2`\*, `ID3v1`\*  |
-| Opus        | `Vorbis Comments`            |
-| Ogg Vorbis  | `Vorbis Comments`            |
-| Speex       | `Vorbis Comments`            |
-| WAV         | `ID3v2`, `RIFF INFO`         |
-| WavPack     | `APE`, `ID3v1`               |
-
-\* The tag will be **read only**, due to lack of official support
-
-## Audio Processing
-
-- [audio_tags_lofty](https://github.com/AfalpHy/audio_tags_lofty.git) — for reading and writing audio tags (based on lofty)
-- [media_kit](https://github.com/media-kit/media-kit.git) — for audio playback (based on mpv/FFmpeg)
-
-
-## Run & Build
-Install Flutter by following the [official Flutter installation guide](https://docs.flutter.dev/install/manual).
-### Ubuntu/Debian
-``` shell
-# Flutter dependencies:
-sudo apt install clang lld cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libsecret-1-dev
-
-# audio lib
-sudo apt install libmpv-dev
-
-git clone https://github.com/AfalpHy/sylvakru.git
-cd sylvakru
-# check the development environment
-flutter doctor -v
-# run in debug mode
-flutter run
-# run in release mode
-flutter run --release
-# build
-flutter build linux
-# if you want to generate a .deb package
-flutter build linux && ./generate_deb.sh
-
-# if you want to generate a .rpm package
-sudo apt install rpm
-flutter build linux && ./generate_rpm.sh
+```sh
+flutter pub get --enforce-lockfile
+flutter analyze
+flutter test
+cargo test --locked --manifest-path native/tuneweave_runtime/Cargo.toml
 ```
 
-### Windows
-Install [Visual Studio](https://visualstudio.microsoft.com/).
-```shell
-git clone https://github.com/AfalpHy/sylvakru.git
-cd sylvakru
-# check the development environment
-flutter doctor -v
-# run in debug mode
-flutter run
-# run in release mode
-flutter run --release
-# build
-flutter build windows
-```
+Android：设置 `ANDROID_NDK_HOME` 为 NDK 28.2.13676358，运行
+`python tooling/build_native.py android arm64` 或 `arm`，再运行对应架构的 `flutter build apk`。
+Windows：运行 `python tooling/build_native.py windows x64` 或 `arm64`，
+`python tooling/prepare_mpv.py <架构>`，再构建 Flutter。内嵌后端通过 Dart FFI 加载进程内动态库。
 
-### macOS & iOS
-Install Xcode and the Xcode Command Line Tools by following the [official Apple Developer download page](https://developer.apple.com/download/all/).
+## 自动构建与发布
 
-```shell
-git clone https://github.com/AfalpHy/sylvakru.git
-cd sylvakru
+GitHub Actions：PR 运行静态检查和测试；主分支推送及手动触发构建四种架构。
+Artifacts 保留 30 天，包含两个签名 APK、两个 Windows 安装程序及 SHA-256 文件。
+Android 签名由固定的 `LINSEN_KEYSTORE_BASE64` 与 `LINSEN_KEYSTORE_PASSWORD` Secrets 提供。
+密钥不得提交到仓库，后续升级必须保留同一份密钥。
 
-# install CocoaPods
-brew install cocoapods
+Release 工作流支持 `v*` 标签和手动指定已有标签，总是检出该标签。
+发布前必须完成 `docs/verification.json` 的真实验收记录；alpha/beta/rc 标签发布为预发行版。
+尚未完成 ColorOS 16 流体云真机验收，不能将当前开发状态宣称为正式版完成。
 
-# check the development environment
-flutter doctor -v
-# run in debug mode
-flutter run
-# run in release mode
-flutter run --release
-# build
-flutter build macos
-
-# build an unsigned ipa
-flutter build ios --release --no-codesign && \
-mkdir -p Payload && \
-cp -r build/ios/iphoneos/Runner.app Payload/ && \
-zip -r sylvakru.ipa Payload && \
-rm -rf Payload
-```
-
-### Android
-Install [Android Studio](https://developer.android.com/studio) and Android SDK Command-line Tools
-```shell
-git clone https://github.com/AfalpHy/sylvakru.git
-cd sylvakru
-# accept the SDK licenses
-flutter doctor --android-licenses
-# check the development environment
-flutter doctor -v
-# run in debug mode
-flutter run
-# run in release mode
-flutter run --release
-# build
-flutter build apk
-# split abi
-flutter build apk --split-per-abi
-# build TV
-flutter build apk --dart-define=TV=true
-```
-## Screenshots
-
-### On Mobile
-
-- iPhone
-<div>
-    <img src="./screenshots/mobile0.png" width="270" height="540" />
-    <img src="./screenshots/mobile1.png" width="270" height="540" />
-    <img src="./screenshots/mobile2.png" width="270" height="540" />
-</div>
-
-<div>
-    <img src="./screenshots/mobile3.png" width="270" height="540" />
-    <img src="./screenshots/mobile4.png" width="270" height="540" />
-    <img src="./screenshots/mobile5.png" width="270" height="540" />
-</div>
-
-![](./screenshots/mobile6.png)
-![](./screenshots/mobile7.png)
-![](./screenshots/mobile8.png)
-
-- iPad
-
-![](./screenshots/mobile9.png)
-![](./screenshots/mobile10.png)
-![](./screenshots/mobile11.png)
-![](./screenshots/mobile12.png)
-
-### On Desktop
-
-![](./screenshots/desktop0.png)
-![](./screenshots/desktop1.png)
-![](./screenshots/desktop2.png)
-![](./screenshots/desktop3.png)
-![](./screenshots/desktop4.png)
-![](./screenshots/desktop5.png)
-![](./screenshots/desktop6.png)
+保留 Apache-2.0 许可证与原作者归属，详见 [NOTICE](NOTICE)。

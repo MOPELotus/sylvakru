@@ -1,3 +1,4 @@
+// Modified 2026 MOPELotus: support public HTTP artwork without account headers.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -75,24 +76,50 @@ Future<void> _loadPicture(MyPicture picture) async {
   try {
     Uint8List? bytes;
 
-    switch (sourceType) {
-      case .local:
-        bytes = await readPictureAsync(picture.id);
-        break;
-      case .webdav:
-        final tmpPath = await covertToRedirectPathIfNeed(picture.id);
-        if (tmpPath == null) {
-          bytes = await readPictureAsync(
-            picture.id,
-            headers: webdavClient?.headers,
-          );
-        } else {
-          bytes = await readPictureAsync(tmpPath);
+    final remote = Uri.tryParse(picture.id);
+    if (remote != null && const {'http', 'https'}.contains(remote.scheme)) {
+      final client = HttpClient()
+        ..connectionTimeout = const Duration(seconds: 10);
+      try {
+        final request = await client.getUrl(remote);
+        final response = await request.close().timeout(
+          const Duration(seconds: 15),
+        );
+        if (response.statusCode == 200) {
+          final buffer = BytesBuilder();
+          await for (final chunk in response.timeout(
+            const Duration(seconds: 15),
+          )) {
+            buffer.add(chunk);
+            if (buffer.length > 8 * 1024 * 1024) {
+              throw StateError('Artwork too large');
+            }
+          }
+          bytes = buffer.takeBytes();
         }
-        break;
-      default:
-        bytes = await streamClient?.getPictureBytes(picture.id);
-        break;
+      } finally {
+        client.close(force: true);
+      }
+    } else {
+      switch (sourceType) {
+        case .local:
+          bytes = await readPictureAsync(picture.id);
+          break;
+        case .webdav:
+          final tmpPath = await covertToRedirectPathIfNeed(picture.id);
+          if (tmpPath == null) {
+            bytes = await readPictureAsync(
+              picture.id,
+              headers: webdavClient?.headers,
+            );
+          } else {
+            bytes = await readPictureAsync(tmpPath);
+          }
+          break;
+        default:
+          bytes = await streamClient?.getPictureBytes(picture.id);
+          break;
+      }
     }
 
     if (bytes != null) {

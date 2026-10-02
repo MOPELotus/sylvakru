@@ -1,3 +1,4 @@
+// Modified 2026 MOPELotus: metadata without a local path can have empty artwork.
 import 'dart:convert';
 import 'dart:io';
 
@@ -52,7 +53,7 @@ class MyAudioMetadata {
     this.lastPlayed,
     this.lyricsTimeOffset = 0,
   }) {
-    picture = MyPicture.form(isStreamSource ? coverId ?? id : path!);
+    picture = MyPicture.form(isStreamSource ? coverId ?? id : path ?? '');
 
     final md5Hash = md5.convert(utf8.encode(id)).toString();
     if (sourceType != .local) {

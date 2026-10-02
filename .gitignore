@@ -46,3 +46,14 @@ app.*.map.json
 
 .vscode
 *.pfx
+# Linsen native build outputs and signing material
+**/target/
+android/app/src/main/jniLibs/
+android/key.properties
+*.jks
+*.keystore
+native/libs/
+/dist/
+native/mpv/
+native/lofty-source/
+/snap/

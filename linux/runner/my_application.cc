@@ -1,6 +1,8 @@
+// Modified 2026 MOPELotus: Linsen branding and physical renderer verification.
 #include "my_application.h"
 
 #include <flutter_linux/flutter_linux.h>
+#include <epoxy/gl.h>
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
 #endif
@@ -14,10 +16,25 @@ struct _MyApplication {
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 
+static void log_renderer(GtkWidget* widget) {
+  if (GTK_IS_GL_AREA(widget)) {
+    gtk_gl_area_make_current(GTK_GL_AREA(widget));
+    if (!gtk_gl_area_get_error(GTK_GL_AREA(widget))) {
+      g_message("Linsen Flutter GL renderer: %s; vendor: %s", glGetString(GL_RENDERER), glGetString(GL_VENDOR));
+    }
+  }
+  if (GTK_IS_CONTAINER(widget)) {
+    GList* children = gtk_container_get_children(GTK_CONTAINER(widget));
+    for (GList* child = children; child; child = child->next) log_renderer(GTK_WIDGET(child->data));
+    g_list_free(children);
+  }
+}
+
 // Called when first Flutter frame received.
 static void first_frame_cb(MyApplication* self, FlView *view)
 {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
+  log_renderer(GTK_WIDGET(view));
 }
 
 // Implements GApplication::activate.
@@ -46,11 +63,11 @@ static void my_application_activate(GApplication* application) {
   if (use_header_bar) {
     GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
     gtk_widget_show(GTK_WIDGET(header_bar));
-    gtk_header_bar_set_title(header_bar, "Sylvakru");
+    gtk_header_bar_set_title(header_bar, "Linsen");
     gtk_header_bar_set_show_close_button(header_bar, TRUE);
     gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
   } else {
-    gtk_window_set_title(window, "Sylvakru");
+    gtk_window_set_title(window, "Linsen");
   }
 
   gtk_window_set_default_size(window, 1050, 700);

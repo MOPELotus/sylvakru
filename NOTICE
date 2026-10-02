@@ -1,0 +1,25 @@
+Linsen / 聆序
+Copyright 2026 MOPELotus.
+
+This application is based on Sylvakru, Copyright 2025-2026 AfalpHy,
+licensed under Apache License 2.0: https://github.com/AfalpHy/sylvakru
+Original attribution and license are preserved. Linsen modifies branding,
+private music sources, queue restoration, media resolution and build automation.
+
+TuneWeave, AfalpHy and contributors, MIT OR Apache-2.0:
+https://github.com/MOPELotus/TuneWeave
+Pinned source revision: da3fde212ff45568b743377dee91b0b2e83a8989
+TuneWeave license files accompany the application assets.
+
+media_kit and its Windows plugin, Copyright 2021 onwards Hitesh Kumar Saini,
+MIT. The Windows plugin is modified to select verified architecture-specific
+libmpv binaries. See vendor/media_kit_libs_windows_audio/LICENSE.
+
+Windows libmpv: LGPL-2.1-or-later; included FFmpeg: LGPL-3.0-or-later.
+Exact runtime URLs and SHA-256 are pinned in tooling/mpv-lock.json.
+These dynamically loaded libraries can be replaced with compatible builds.
+License texts and corresponding-source references are in assets/licenses/.
+Android runtimes retain the upstream libmpv/FFmpeg license notices;
+release remains blocked until their final binary configurations are audited.
+
+Other dependency notices are available in the application's license viewer.

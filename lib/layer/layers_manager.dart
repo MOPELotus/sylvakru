@@ -18,7 +18,9 @@ import 'package:sylvakru/layer/albums_layer.dart';
 import 'package:sylvakru/layer/artists_layer.dart';
 import 'package:sylvakru/layer/folders_layer.dart';
 import 'package:sylvakru/layer/font_picker_layer.dart';
-import 'package:sylvakru/layer/home_layer.dart';
+// Modified 2026 MOPELotus: use the private TuneWeave workspace as home.
+import 'package:sylvakru/linsen/workspace.dart';
+import 'package:sylvakru/layer/home_layer.dart' show homeKey, homeVisibleNotifier;
 import 'package:sylvakru/layer/license_layer.dart';
 import 'package:sylvakru/layer/playlists_layer.dart';
 import 'package:sylvakru/layer/premium_layer.dart';
@@ -131,7 +133,7 @@ class LayersManager {
       } else if (label == 'folders') {
         return FoldersLayer(key: GlobalKey());
       } else if (label == 'home') {
-        return HomeLayer(key: GlobalKey());
+        return LinsenWorkspace(key: GlobalKey());
       } else if (label == 'songs') {
         return SongsLayer(key: GlobalKey());
       } else if (label == 'frequently') {

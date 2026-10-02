@@ -90,11 +90,11 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.afalphy" "\0"
-            VALUE "FileDescription", "Sylvakru" "\0"
+            VALUE "FileDescription", "Linsen" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "sylvakru" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2025-2026 com.afalphy. All rights reserved." "\0"
-            VALUE "OriginalFilename", "Sylvakru.exe" "\0"
+            VALUE "OriginalFilename", "Linsen.exe" "\0"
             VALUE "ProductName", "sylvakru" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END

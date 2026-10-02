@@ -1,3 +1,4 @@
+// Modified 2026 MOPELotus: Linsen application identity and Android 8 minimum.
 import java.util.Properties
 import java.io.FileInputStream
 
@@ -19,7 +20,7 @@ dependencies {
 }
 
 android {
-    namespace = "com.afalphy.sylvakru"
+    namespace = "com.mopelotus.linsen"
     compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
@@ -38,8 +39,8 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.afalphy.sylvakru"
-        minSdk = flutter.minSdkVersion
+        applicationId = "com.mopelotus.linsen"
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

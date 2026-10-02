@@ -1,4 +1,4 @@
-package com.afalphy.sylvakru
+package com.mopelotus.linsen
 
 import com.ryanheise.audioservice.AudioServiceActivity
 

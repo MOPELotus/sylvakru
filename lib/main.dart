@@ -1,3 +1,5 @@
+// Modified 2026 MOPELotus: Linsen private player startup and branding.
+import 'package:sylvakru/linsen/controller.dart';
 import 'dart:io';
 import 'package:corner_radius_plugin/corner_radius_plugin.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
@@ -72,6 +74,8 @@ Future<void> main() async {
   await initAudioService();
 
   await Loader.init();
+  await linsen.initialize();
+  firstLaunch = false;
   await LiquidGlassWidgets.initialize();
   if (isTV) {
     FocusManager.instance.highlightStrategy =
@@ -106,7 +110,7 @@ Future<void> main() async {
             ...GlobalMaterialLocalizations.delegates,
           ],
           navigatorKey: globalNavigatorKey,
-          title: 'Sylvakru',
+          title: 'Linsen',
           theme: ThemeData(
             focusColor: lightHoverFocusColorNotifier.value
                 ? Colors.white.withAlpha(20)
@@ -379,6 +383,13 @@ Future<void> _setupTray() async {
 }
 
 void _registerLicenses() {
+  LicenseRegistry.addLicense(() async* {
+    for (final file in ['tuneweave-apache.txt', 'tuneweave-mit.txt']) {
+      yield LicenseEntryWithLineBreaks([
+        'TuneWeave',
+      ], await rootBundle.loadString('assets/licenses/$file'));
+    }
+  });
   LicenseRegistry.addLicense(() async* {
     final text = await rootBundle.loadString(
       'assets/licenses/libmpv-license.txt',

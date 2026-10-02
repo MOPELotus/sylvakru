@@ -1,3 +1,4 @@
+// Modified 2026 MOPELotus: private edition excludes purchases and legacy server sources.
 import 'dart:convert';
 import 'dart:io';
 
@@ -103,19 +104,6 @@ class _SettingsListState extends State<SettingsList> {
 
         if (isLandscape && viewModeNotifier.value != .bigPicture)
           sliverBox(const SizedBox(height: 10)),
-
-        if (Platform.isIOS && viewModeNotifier.value != .bigPicture)
-          sliverBox(
-            paddingIfNeed(isLandscape, premiumFeaturesListTile(context, l10n)),
-          ),
-
-        sliverBox(
-          paddingIfNeed(isLandscape, switchSourceTypeListTile(context, l10n)),
-        ),
-
-        sliverBox(
-          paddingIfNeed(isLandscape, manageServersListTile(context, l10n)),
-        ),
 
         if (isNotStreamSource)
           sliverBox(

@@ -1,3 +1,5 @@
+// Modified 2026 MOPELotus: TuneWeave resolution and generation-safe media opens.
+import 'package:sylvakru/linsen/controller.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
@@ -60,8 +62,8 @@ Future<void> initAudioService() async {
     builder: () => MyAudioHandler(),
 
     config: const AudioServiceConfig(
-      androidNotificationChannelId: 'com.afalphy.sylvakru',
-      androidNotificationChannelName: 'Sylvakru',
+      androidNotificationChannelId: 'com.mopelotus.linsen',
+      androidNotificationChannelName: 'Linsen',
       androidNotificationOngoing: true,
     ),
   );
@@ -104,6 +106,11 @@ Future<void> initAudioService() async {
 class MyAudioHandler extends BaseAudioHandler {
   final _player = Player();
   bool _started = false;
+  int _loadGeneration = 0;
+  bool _seeking = false;
+  bool _recovering = false;
+  int _recoverAttempts = 0;
+  Future<void> _openTail = Future.value();
   int currentIndex = -1;
   List<MyAudioMetadata> _playQueueTmp = [];
   int _tmpPlayMode = 0;
@@ -122,7 +129,13 @@ class MyAudioHandler extends BaseAudioHandler {
     (_player.platform as NativePlayer).setProperty('sub-auto', 'no');
 
     _player.stream.error.listen((onData) {
-      logger.output("player error:$onData");
+      final song = currentSongNotifier.value;
+      if (song != null && linsen.isOnline(song)) {
+        logger.output('Online media failed; attempting bounded recovery');
+        unawaited(_recoverOnline());
+      } else {
+        logger.output("player error:$onData");
+      }
     });
 
     _player.stream.completed.listen((completed) async {
@@ -168,6 +181,16 @@ class MyAudioHandler extends BaseAudioHandler {
       layersManager.updateBackground();
     });
 
+    _player.stream.playing.listen(
+      (playing) => linsen.outbox.playing(
+        playing && !_player.state.buffering && !_seeking,
+      ),
+    );
+    _player.stream.buffering.listen(
+      (buffering) => linsen.outbox.playing(
+        !buffering && _player.state.playing && !_seeking,
+      ),
+    );
     _player.stream.position.listen(_updateCurrentLyricIndex);
   }
 
@@ -621,6 +644,73 @@ class MyAudioHandler extends BaseAudioHandler {
   }
 
   Future<void> load({Duration? start}) async {
+    if (currentIndex < 0 || currentIndex >= playQueue.length) return;
+    _recoverAttempts = 0;
+    final epoch = ++_loadGeneration;
+    final target = playQueue[currentIndex];
+    _openTail = _openTail.catchError((Object _) {}).then((_) async {
+      if (epoch != _loadGeneration) return;
+      await _loadSelected(target, epoch, start: start);
+    });
+    await _openTail;
+  }
+
+  Future<void> _recoverOnline() async {
+    final epoch = _loadGeneration;
+    if (_recovering || _recoverAttempts >= 3) return;
+    _recovering = true;
+    try {
+      while (loadingSong && epoch == _loadGeneration) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      final song = currentSongNotifier.value;
+      if (song == null || !linsen.isOnline(song) || epoch != _loadGeneration) {
+        return;
+      }
+      final position = _player.state.position;
+      final media = linsen.playingMedia[song.id]!;
+      final index = _recoverAttempts++;
+      final backup = media.backupUrls
+          .where((url) {
+            final uri = Uri.tryParse(url);
+            return uri != null &&
+                const {'http', 'https'}.contains(uri.scheme) &&
+                uri.host.isNotEmpty;
+          })
+          .take(2)
+          .toList();
+      String url;
+      Map<String, String> headers;
+      if (index < backup.length) {
+        url = backup[index];
+        headers = media.headers;
+      } else {
+        _recoverAttempts = 3;
+        final refreshed = await linsen.resolveSong(song, refresh: true);
+        if (refreshed == null || epoch != _loadGeneration) return;
+        url = refreshed.url;
+        headers = refreshed.headers;
+      }
+      if (epoch != _loadGeneration) return;
+      await _player.open(
+        Media(url, httpHeaders: headers, start: position),
+        play: isPlayingNotifier.value,
+      );
+      if (epoch != _loadGeneration) await _player.stop();
+    } catch (_) {
+      if (epoch == _loadGeneration) await pause();
+    } finally {
+      _recovering = false;
+    }
+  }
+
+  Future<void> _loadSelected(
+    MyAudioMetadata target,
+    int epoch, {
+    Duration? start,
+  }) async {
+    unawaited(linsen.outbox.finish());
+    await _player.pause();
     if (currentSongNotifier.value != null) {
       if (_playLastSyncTime != null) {
         _playedDuration += DateTime.now().difference(_playLastSyncTime!);
@@ -640,16 +730,35 @@ class MyAudioHandler extends BaseAudioHandler {
     // save currentIndex
     savePlayState();
 
-    final currentSong = playQueue[currentIndex];
+    final currentSong = target;
 
     loadingSong = true;
 
+    try {
+      final resolved = await linsen.resolveSong(currentSong);
+      if (epoch != _loadGeneration) return;
+      if (resolved != null) {
+        currentSong.path = resolved.url;
+      }
+    } catch (_) {
+      if (epoch == _loadGeneration) {
+        loadingSong = false;
+        await stop();
+      }
+      return;
+    }
     await _setLyricsAndUpdateColors(currentSong);
+    if (epoch != _loadGeneration) return;
 
     currentSongNotifier.value = currentSong;
 
     currentLyricsIndexNotifier.value = -1;
 
+    await linsen.outbox.start(
+      linsen.playingMedia[currentSong.id],
+      linsen.playingMedia[currentSong.id]?.durationMs ??
+          currentSong.duration?.inMilliseconds,
+    );
     try {
       if (currentSong.cacheExist) {
         await _player.open(
@@ -660,22 +769,29 @@ class MyAudioHandler extends BaseAudioHandler {
         String? resource;
         Map<String, String>? headers;
 
-        switch (sourceType) {
-          case .webdav:
-            final tmpPath = await covertToRedirectPathIfNeed(currentSong.path!);
-            if (tmpPath == null) {
-              headers = webdavClient?.headers;
-            } else {
-              resource = tmpPath;
-            }
-          case .navidrome:
-          case .emby:
-          case .feiniu:
-            await streamClient?.ping();
-            resource = streamClient?.getStreamUrl(currentSong.id);
-            headers = streamClient?.headers;
-          default:
-            break;
+        if (linsen.isOnline(currentSong)) {
+          resource = linsen.playingMedia[currentSong.id]!.url;
+          headers = linsen.playingMedia[currentSong.id]!.headers;
+        } else {
+          switch (sourceType) {
+            case .webdav:
+              final tmpPath = await covertToRedirectPathIfNeed(
+                currentSong.path!,
+              );
+              if (tmpPath == null) {
+                headers = webdavClient?.headers;
+              } else {
+                resource = tmpPath;
+              }
+            case .navidrome:
+            case .emby:
+            case .feiniu:
+              await streamClient?.ping();
+              resource = streamClient?.getStreamUrl(currentSong.id);
+              headers = streamClient?.headers;
+            default:
+              break;
+          }
         }
         resource ??= currentSong.path!;
 
@@ -702,6 +818,14 @@ class MyAudioHandler extends BaseAudioHandler {
     }
 
     loadingSong = false;
+    if (currentIndex + 1 < playQueue.length &&
+        linsen.isOnline(playQueue[currentIndex + 1])) {
+      unawaited(
+        linsen.availability
+            .check(playQueue[currentIndex + 1].id)
+            .then<void>((_) {}, onError: (Object _, StackTrace _) {}),
+      );
+    }
 
     if (Platform.isIOS) {
       HomeWidgetService.updateNowPlayingWidget();
@@ -720,7 +844,8 @@ class MyAudioHandler extends BaseAudioHandler {
     mediaItem.add(
       MediaItem(
         id: currentSong.id,
-        title: lyric ?? getTitle(currentSong),
+        title: getTitle(currentSong),
+        extras: {'linsen.lyric': ?lyric},
         artist: getArtist(currentSong),
         album: getAlbum(currentSong),
         artUri: artUri, // file:// URI
@@ -754,6 +879,8 @@ class MyAudioHandler extends BaseAudioHandler {
 
   @override
   Future<void> stop() async {
+    _loadGeneration++;
+    unawaited(linsen.outbox.finish());
     _player.stop();
     updateIsPlaying(false);
     updatePlaybackState(stop: true);
@@ -764,8 +891,17 @@ class MyAudioHandler extends BaseAudioHandler {
 
   @override
   Future<void> seek(Duration position) async {
+    _seeking = true;
+    linsen.outbox.playing(false);
     updatePlaybackState(postion: position);
-    await _player.seek(position);
+    try {
+      await _player.seek(position);
+    } finally {
+      _seeking = false;
+    }
+    linsen.outbox.playing(
+      _player.state.playing && !_player.state.buffering && !_seeking,
+    );
     // ensure position is updated
     await Future.delayed(Duration(milliseconds: 50));
     updateLyricsNotifier.value++;

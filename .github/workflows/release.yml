@@ -1,0 +1,61 @@
+name: Release Linsen
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing v-prefixed tag to build and release
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Select an existing tag
+        id: tag
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+      - name: Require actual device and architecture acceptance
+        run: python3 tooling/release_gate.py "${{ steps.tag.outputs.tag }}"
+  packages:
+    needs: gate
+    uses: ./.github/workflows/packages.yml
+    with:
+      ref: ${{ needs.gate.outputs.tag }}
+    secrets: inherit
+  publish:
+    needs: [gate, packages]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.gate.outputs.tag }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: Linsen-*
+          path: dist
+          merge-multiple: true
+      - name: Publish all four packages together
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.gate.outputs.tag }}
+        run: |
+          test "$(find dist -name '*.apk' | wc -l)" = 2
+          test "$(find dist -name '*.exe' | wc -l)" = 2
+          cp docs/RELEASE_NOTES.md dist/RELEASE_NOTES.md
+          flags=()
+          [[ "$TAG" != *-* ]] || flags+=(--prerelease)
+          gh release create "$TAG" dist/*.apk dist/*.exe dist/SHA256SUMS-* --verify-tag --title "Linsen $TAG" --notes-file docs/RELEASE_NOTES.md "${flags[@]}"
