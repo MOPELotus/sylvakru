@@ -218,19 +218,41 @@ extension _WorkspaceActions on _LinsenWorkspaceState {
     final api = linsen.service;
     final generation = api.generation;
     final preferredPlatform = linsen.playbackPlatform;
-    final dir = await FilePicker.getDirectoryPath(dialogTitle: '保存到');
-    if (dir == null) return;
-    final result = await _exporter.export(
-      api: api,
-      generation: generation,
-      reference: row['ref'] as String,
-      cloud: row['cloud'] == true,
-      preferredPlatform: preferredPlatform,
-      directory: Directory(dir),
-      title: row['name'] as String? ?? 'song',
-      confirmOverwrite: () => confirm('目标文件已存在，要覆盖吗？'),
-    );
-    if (result == null) return;
+    Directory? androidTemporary;
+    try {
+      String? dir;
+      if (Platform.isAndroid) {
+        final parent = Directory('${appSupportDir.path}/linsen/exports');
+        await parent.create(recursive: true);
+        androidTemporary = await parent.createTemp('download-');
+        dir = androidTemporary.path;
+      } else {
+        dir = await FilePicker.getDirectoryPath(dialogTitle: '保存到');
+      }
+      if (dir == null) return;
+      final result = await _exporter.export(
+        api: api,
+        generation: generation,
+        reference: row['ref'] as String,
+        cloud: row['cloud'] == true,
+        preferredPlatform: preferredPlatform,
+        directory: Directory(dir),
+        title: row['name'] as String? ?? 'song',
+        confirmOverwrite: () => confirm('目标文件已存在，要覆盖吗？'),
+      );
+      if (result == null) return;
+      if (Platform.isAndroid &&
+          !await AndroidDocumentExporter().save(
+            result,
+            validSession: () => api.generation == generation,
+          )) {
+        return;
+      }
+    } finally {
+      if (androidTemporary != null && await androidTemporary.exists()) {
+        await androidTemporary.delete(recursive: true);
+      }
+    }
     if (mounted) {
       showCenterMessage('下载完成');
     }

@@ -70,8 +70,6 @@ Future<void> initAudioService() async {
   _session = await AudioSession.instance;
   await _session.configure(AudioSessionConfiguration.music());
 
-  await _session.setActive(true);
-
   _session.becomingNoisyEventStream.listen((_) {
     audioHandler.pause();
   });
@@ -107,6 +105,7 @@ class MyAudioHandler extends BaseAudioHandler {
   final _player = Player();
   bool _started = false;
   int _loadGeneration = 0;
+  int _transportGeneration = 0;
   bool _seeking = false;
   bool _recovering = false;
   int _recoverAttempts = 0;
@@ -207,6 +206,7 @@ class MyAudioHandler extends BaseAudioHandler {
     }
     int tmp = currentLyricsIndexNotifier.value;
     final lines = currentSong.parsedLyrics!.lines;
+    if (lines.isEmpty) return;
 
     position += Duration(milliseconds: currentSong.lyricsTimeOffset);
 
@@ -626,9 +626,14 @@ class MyAudioHandler extends BaseAudioHandler {
     if (currentSong != null) {
       final tmpCurrentSong = library.id2Song[currentSong.id];
       if (tmpCurrentSong != null) {
-        await _setLyricsAndUpdateColors(tmpCurrentSong);
+        final epoch = _loadGeneration;
         currentSongNotifier.value = tmpCurrentSong;
         currentIndex = playQueue.indexOf(tmpCurrentSong);
+        await _setLyricsAndUpdateColors(tmpCurrentSong, epoch);
+        if (epoch != _loadGeneration ||
+            currentSongNotifier.value != tmpCurrentSong) {
+          return;
+        }
         updateServiceMediaItem(tmpCurrentSong);
       } else {
         currentSongNotifier.value = null;
@@ -643,9 +648,14 @@ class MyAudioHandler extends BaseAudioHandler {
     saveAllStates();
   }
 
-  Future<void> _setLyricsAndUpdateColors(MyAudioMetadata song) async {
+  Future<void> _setLyricsAndUpdateColors(
+    MyAudioMetadata song,
+    int epoch,
+  ) async {
     await setParsedLyrics(song);
-    currentCoverArtColor = await computeColor(song.picture);
+    final color = await computeColor(song.picture);
+    if (epoch != _loadGeneration || currentSongNotifier.value != song) return;
+    currentCoverArtColor = color;
     updateHoverFocusColor();
     contrastColorTheme = ContrastColorGenerator.generate(currentCoverArtColor);
     if (lyricsPageThemeNotifier.value == .vivid) {
@@ -655,6 +665,30 @@ class MyAudioHandler extends BaseAudioHandler {
     if (viewModeNotifier.value == .mini) {
       colorManager.updateMiniViewColors();
     }
+    final lines = song.parsedLyrics?.lines ?? <LyricLine>[];
+    final index = currentLyricsIndexNotifier.value;
+    updateServiceMediaItem(
+      song,
+      lyric: index >= 0 && index < lines.length ? lines[index].text : null,
+    );
+  }
+
+  void _loadOnlineLyrics(MyAudioMetadata song, int epoch) {
+    if (song.cacheExist) return;
+    final media = linsen.playingMedia[song.id];
+    if (media == null) return;
+    unawaited(
+      linsen.loadSongLyrics(song, media).then<void>((changed) {
+        if (!changed ||
+            epoch != _loadGeneration ||
+            currentSongNotifier.value != song) {
+          return;
+        }
+        currentLyricsIndexNotifier.value = -1;
+        updateLyricsNotifier.value++;
+        _updateCurrentLyricIndex(_player.state.position);
+      }, onError: (Object _, StackTrace _) {}),
+    );
   }
 
   Future<void> load({Duration? start}) async {
@@ -725,7 +759,11 @@ class MyAudioHandler extends BaseAudioHandler {
         Media(url, httpHeaders: headers, start: position),
         play: isPlayingNotifier.value,
       );
-      if (epoch != _loadGeneration) await _player.stop();
+      if (epoch != _loadGeneration) {
+        await _player.stop();
+      } else {
+        _loadOnlineLyrics(song, epoch);
+      }
     } catch (_) {
       if (epoch == _loadGeneration) await pause();
     } finally {
@@ -776,7 +814,7 @@ class MyAudioHandler extends BaseAudioHandler {
       }
       return;
     }
-    await _setLyricsAndUpdateColors(currentSong);
+    await setParsedLyrics(currentSong);
     if (epoch != _loadGeneration) return;
 
     currentSongNotifier.value = currentSong;
@@ -858,6 +896,13 @@ class MyAudioHandler extends BaseAudioHandler {
     }
 
     loadingSong = false;
+    unawaited(
+      _setLyricsAndUpdateColors(
+        currentSong,
+        epoch,
+      ).catchError((Object _, StackTrace _) {}),
+    );
+    if (linsen.isOnline(currentSong)) _loadOnlineLyrics(currentSong, epoch);
     if (currentIndex + 1 < playQueue.length &&
         linsen.isOnline(playQueue[currentIndex + 1])) {
       unawaited(
@@ -896,8 +941,21 @@ class MyAudioHandler extends BaseAudioHandler {
 
   @override
   Future<void> play() async {
-    if (playQueue.isEmpty) return;
-    _player.play();
+    if (playQueue.isEmpty ||
+        currentIndex < 0 ||
+        currentIndex >= playQueue.length) {
+      return;
+    }
+    final intent = ++_transportGeneration;
+    if (isMobile && !await _session.setActive(true)) return;
+    if (intent != _transportGeneration) return;
+    if (loadingSong) {
+      updateIsPlaying(true);
+      return;
+    }
+    if (currentSongNotifier.value != playQueue[currentIndex]) return;
+    await _player.play();
+    if (intent != _transportGeneration) return;
 
     updateIsPlaying(true);
     updatePlaybackState();
@@ -909,6 +967,7 @@ class MyAudioHandler extends BaseAudioHandler {
 
   @override
   Future<void> pause() async {
+    _transportGeneration++;
     _player.pause();
     updateIsPlaying(false);
     updatePlaybackState();
@@ -919,6 +978,7 @@ class MyAudioHandler extends BaseAudioHandler {
 
   @override
   Future<void> stop() async {
+    _transportGeneration++;
     _loadGeneration++;
     unawaited(linsen.outbox.finish());
     final stopped = _player.stop();

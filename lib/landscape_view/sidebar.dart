@@ -7,7 +7,6 @@ import 'package:sylvakru/base/services/color_manager.dart';
 import 'package:sylvakru/base/app.dart';
 import 'package:sylvakru/base/asset_images.dart';
 import 'package:sylvakru/base/services/interaction.dart';
-import 'package:sylvakru/base/utils/media_query.dart';
 import 'package:sylvakru/base/widgets/cover_art_widget.dart';
 import 'package:sylvakru/base/widgets/my_divider.dart';
 import 'package:sylvakru/base/widgets/playlist_widgets.dart';
@@ -442,17 +441,15 @@ class Sidebar extends StatelessWidget {
                 ),
               ),
             ),
-            if (isTooNarrow(context)) ...[
-              sidebarItem(
-                label: 'settings',
-                leading: ImageIcon(settingImage, size: 30),
-                content: l10n.settings,
-                onTap: () {
-                  layersManager.switchRootLayer('settings');
-                },
-              ),
-              SizedBox(height: 40),
-            ],
+            sidebarItem(
+              label: 'settings',
+              leading: ImageIcon(settingImage, size: 30),
+              content: l10n.settings,
+              onTap: () {
+                layersManager.switchRootLayer('settings');
+              },
+            ),
+            SizedBox(height: 40),
           ],
         ),
       ),

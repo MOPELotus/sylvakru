@@ -23,3 +23,22 @@ libavutil、libswscale、libswresample 均报告 LGPL version 3 or later；
 [Android 构建项目](https://github.com/AfalpHy/libmpv-android-audio-build)、
 [Windows mpv 源码](https://github.com/mpv-player/mpv/commit/a1f50f2c3)。
 发布前还须核对依赖对应源码是否完整可取得；本记录不代替最终包和源码的交付核对。
+
+## 固定源码入口复核
+
+Android 发布标签 20260920 当前指向提交
+`cf2cc6433890192a98c8277aafd2b18b0ea90a98`。
+[依赖声明](https://github.com/AfalpHy/libmpv-android-audio-build/blob/cf2cc6433890192a98c8277aafd2b18b0ea90a98/buildscripts/include/depinfo.sh)
+列出 mpv 0.41.0、FFmpeg 8.1 和 OpenSSL 3.4.0；
+[FFmpeg 构建脚本](https://github.com/AfalpHy/libmpv-android-audio-build/blob/cf2cc6433890192a98c8277aafd2b18b0ea90a98/buildscripts/scripts/ffmpeg.sh)
+明确关闭 GPL、启用 version3。发布资产仅有四种 ABI 的 JAR。
+这些是上游声明和脚本的入口，不表示已经证明每个二进制依赖的对应源码完整性。
+
+Windows mpv 发布所用提交扩展为完整 SHA：
+`a1f50f2c38206dc943f331cf5a5b02f97a0ce219`，已写入下载锁文件。
+[固定版本的 Windows 构建流程](https://github.com/mpv-player/mpv/blob/a1f50f2c38206dc943f331cf5a5b02f97a0ce219/.github/workflows/build.yml)
+使用 BtbN 的 `win64-lgpl` / `winarm64-lgpl` 容器，其声明标签为 latest。
+仅有 mpv 提交不足以证明容器内全部依赖的对应源码，正式发布前还需完成该项核对。
+
+`verification.json` 的 license_audit 保持未通过；它属于正式发布的独立门槛，
+不能用 Android 真机验收或本轮代码测试替代。

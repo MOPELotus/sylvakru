@@ -326,8 +326,9 @@ class LinsenController extends ChangeNotifier {
             // Invalid optional lyrics must not hide a valid offline recording.
           }
         }
-        song.parsedLyrics ??= ParsedLyrics()
-          ..lines.add(LyricLine(Duration.zero, '暂无歌词', []));
+        if (song.parsedLyrics == null || song.parsedLyrics!.lines.isEmpty) {
+          song.parsedLyrics = _emptyLyrics();
+        }
         playingMedia[song.id] = ResolvedMedia(raw);
         return playingMedia[song.id];
       }
@@ -335,21 +336,40 @@ class LinsenController extends ChangeNotifier {
     }
     final media = await availability.check(song.id, refresh: refresh);
     playingMedia[song.id] = media;
-    song.parsedLyrics = await _lyricsFor(song, media);
+    song.parsedLyrics = _emptyLyrics();
     notifyListeners();
     return media;
+  }
+
+  ParsedLyrics _emptyLyrics() =>
+      ParsedLyrics()..lines.add(LyricLine(Duration.zero, '暂无歌词', []));
+
+  Future<bool> loadSongLyrics(MyAudioMetadata song, ResolvedMedia media) async {
+    final client = service;
+    final generation = client.generation;
+    final parsed = await _lyricsFor(song, media, client: client);
+    if (!identical(api, client) ||
+        client.generation != generation ||
+        !identical(playingMedia[song.id], media)) {
+      return false;
+    }
+    song.parsedLyrics = parsed;
+    notifyListeners();
+    return true;
   }
 
   // Fetch lyrics for the actual resolved recording, never for an unrelated origin.
   Future<ParsedLyrics> _lyricsFor(
     MyAudioMetadata song,
-    ResolvedMedia media,
-  ) async {
+    ResolvedMedia media, {
+    TuneWeaveApi? client,
+  }) async {
+    client ??= service;
     ParsedLyrics? parsed;
     try {
       dynamic data;
       if (entries[song.id]?['cloud'] == true) {
-        final profile = await service.data(
+        final profile = await client.data(
           'GET',
           '/v1/account/profile',
           query: {'platform': 'netease'},
@@ -362,13 +382,13 @@ class LinsenController extends ChangeNotifier {
             .split(':')
             .skip(1)
             .join(':');
-        data = await service.data(
+        data = await client.data(
           'GET',
           '/v1/account/cloud/lyrics',
           query: {'platform': 'netease', 'uid': uid, 'sid': sid},
         );
       } else if (media.reference.isNotEmpty) {
-        data = await service.data(
+        data = await client.data(
           'GET',
           '/v1/tracks/${Uri.encodeComponent(media.reference)}/lyrics',
         );
@@ -384,8 +404,7 @@ class LinsenController extends ChangeNotifier {
     } catch (_) {
       /* Lyrics failure must not prevent playback. */
     }
-    return parsed ??
-        (ParsedLyrics()..lines.add(LyricLine(Duration.zero, '暂无歌词', [])));
+    return parsed == null || parsed.lines.isEmpty ? _emptyLyrics() : parsed;
   }
 
   void _setCacheFlags(String path, bool exists) {
@@ -434,12 +453,7 @@ class LinsenController extends ChangeNotifier {
     try {
       final media = await availability.check(song.id);
       if (media.isTrial) return;
-      final parsed =
-          playingMedia[song.id]?.reference == media.reference &&
-              playingMedia[song.id]?.platform == media.platform &&
-              song.parsedLyrics != null
-          ? song.parsedLyrics!
-          : await _lyricsFor(song, media);
+      final parsed = await _lyricsFor(song, media, client: client);
       if (cancelled()) return;
       await temporary.parent.create(recursive: true);
       // No other in-process download owns this path; reclaim crash leftovers.

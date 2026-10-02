@@ -2,14 +2,14 @@
   "arm64": {
     "url": "https://github.com/mpv-player/mpv/releases/download/git-release/libmpv-v0.41.0-dev-ga1f50f2c3-36640285359-aarch64-w64-mingw32-lgpl.zip",
     "sha256": "c475fc787c4e4803a1cefed72214054b5f135718ed46115f9d047a40fe66e277",
-    "source": "https://github.com/mpv-player/mpv/commit/a1f50f2c3",
+    "source": "https://github.com/mpv-player/mpv/commit/a1f50f2c38206dc943f331cf5a5b02f97a0ce219",
     "license": "LGPL-2.1-or-later",
     "ffmpeg_license": "LGPL-3.0-or-later"
   },
   "x64": {
     "url": "https://github.com/mpv-player/mpv/releases/download/git-release/libmpv-v0.41.0-dev-ga1f50f2c3-36640285359-x86_64-w64-mingw32-lgpl.zip",
     "sha256": "7e349cc9589b7ced492ed0207c24808f7c328a0ffa96cdae6a069861a1a856a4",
-    "source": "https://github.com/mpv-player/mpv/commit/a1f50f2c3",
+    "source": "https://github.com/mpv-player/mpv/commit/a1f50f2c38206dc943f331cf5a5b02f97a0ce219",
     "license": "LGPL-2.1-or-later",
     "ffmpeg_license": "LGPL-3.0-or-later"
   }
