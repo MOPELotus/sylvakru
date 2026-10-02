@@ -984,7 +984,7 @@ class _SettingsListState extends State<SettingsList> {
       title: Text(l10n.checkUpdate),
       onTap: () async {
         final url = Uri.parse(
-          'https://api.github.com/repos/AfalpHy/sylvakru/releases/latest',
+          'https://api.github.com/repos/MOPELotus/sylvakru/releases/latest',
         );
 
         try {
@@ -994,7 +994,9 @@ class _SettingsListState extends State<SettingsList> {
           if (response.statusCode != 200) {
             if (context.mounted) {
               showCenterMessage(
-                'Failed to fetch GitHub release:${response.statusCode}',
+                response.statusCode == 404
+                    ? '暂未找到可访问的聆序正式发布，请从项目 Actions 获取测试版本。'
+                    : 'Failed to fetch GitHub release:${response.statusCode}',
               );
             }
             return;
@@ -1055,7 +1057,7 @@ class _SettingsListState extends State<SettingsList> {
                                 ElevatedButton(
                                   onPressed: () => launchUrl(
                                     Uri.parse(
-                                      "https://github.com/AfalpHy/sylvakru/releases/latest",
+                                      "https://github.com/MOPELotus/sylvakru/releases/latest",
                                     ),
                                   ),
                                   style: ElevatedButton.styleFrom(
