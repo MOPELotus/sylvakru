@@ -165,7 +165,10 @@ class LinsenController extends ChangeNotifier {
       path: entry['source_ref'] as String,
     );
     song.picture = MyPicture.form(snapshot['cover_url'] as String? ?? '');
-    final hash = sha256.convert(utf8.encode(song.id));
+    final cacheIdentity = entry['cloud'] == true
+        ? '${entry['account_identity']}:${entry['source_ref']}'
+        : entry['source_ref'] as String;
+    final hash = sha256.convert(utf8.encode(cacheIdentity));
     song.cachePath = '${appSupportDir.path}/linsen/cache/$hash.audio';
     song.cacheExist =
         File(song.cachePath!).existsSync() &&
@@ -224,6 +227,20 @@ class LinsenController extends ChangeNotifier {
   Future<ResolvedMedia> _resolve(String key) async {
     final entry = entries[key];
     if (entry == null) {
+      for (final candidate in entries.values) {
+        if (candidate['source_ref'] != key) continue;
+        final cached = library.id2Song[candidate['id']];
+        if (cached != null && cached.cacheExist && candidate['cloud'] != true) {
+          try {
+            final manifest = jsonDecode(
+              await File('${cached.cachePath}.json').readAsString(),
+            );
+            return ResolvedMedia(Map<String, dynamic>.from(manifest as Map));
+          } catch (_) {
+            // A broken manifest does not recursively acquire a resolver slot.
+          }
+        }
+      }
       final data = await service.data(
         'GET',
         '/v1/tracks/${Uri.encodeComponent(key)}/stream',

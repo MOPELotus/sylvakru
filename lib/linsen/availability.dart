@@ -74,6 +74,11 @@ class AvailabilityResolver extends ChangeNotifier {
   Future<ResolvedMedia> check(String key, {bool refresh = false}) {
     final cached = state(key);
     if (!refresh && cached.media != null) return Future.value(cached.media);
+    if (!refresh && cached.grey) {
+      return Future.error(
+        TuneWeaveException('no_playable_source', cached.message ?? '暂无可用音源'),
+      );
+    }
     if (_pending[key] case final future?) return future;
     final epoch = _generation;
     final future = _check(key, epoch);
@@ -133,7 +138,9 @@ class AvailabilityResolver extends ChangeNotifier {
                     'permission_denied',
                   }.contains(a['status']),
             );
-        entry.status = error.code == 'no_playable_source' || exhausted
+        entry.status =
+            (error.code == 'no_playable_source' && attempts == null) ||
+                exhausted
             ? Playability.unavailable
             : Playability.unknown;
         entry.checkedAt = entry.grey ? now() : null;

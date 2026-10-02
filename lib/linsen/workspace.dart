@@ -8,6 +8,8 @@ import 'cloud_upload.dart';
 import 'package:material_ui/material_ui.dart';
 import '../base/audio_handler.dart';
 import '../base/data/library.dart';
+import '../base/widgets/manage_music_folders.dart';
+import '../base/services/interaction.dart';
 import 'availability.dart';
 import 'controller.dart';
 part 'workspace_actions.dart';
@@ -106,9 +108,46 @@ class _LinsenWorkspaceState extends State<LinsenWorkspace> {
         return;
       }
       final failures = <String>[];
+      var cloudHasMore = false, cloudOffset = offset;
       final results = await Future.wait(
         platforms.map((p) async {
           try {
+            if (section == 'cloud') {
+              final found = <Map<String, dynamic>>[];
+              do {
+                if (generation != epoch || !mounted) return found;
+                final response = await linsen.service.request(
+                  'GET',
+                  '/v1/account/cloud/tracks',
+                  query: {
+                    'platform': 'netease',
+                    'limit': 100,
+                    'offset': cloudOffset,
+                  },
+                );
+                final items = response['data'] as List;
+                cloudOffset += items.length;
+                final pagination =
+                    (response['meta'] as Map?)?['pagination'] as Map?;
+                cloudHasMore =
+                    items.isNotEmpty &&
+                    (pagination?['has_more'] as bool? ?? items.length == 100);
+                for (final raw in items) {
+                  final item = Map<String, dynamic>.from(raw as Map);
+                  final track = Map<String, dynamic>.from(item['track'] as Map);
+                  final artists = (track['artists'] as List? ?? [])
+                      .map((a) => a['name'])
+                      .join(' ');
+                  final text =
+                      '${track['name']} $artists ${item['file_name'] ?? ''}'
+                          .toLowerCase();
+                  if (text.contains(query.text.trim().toLowerCase())) {
+                    found.add({...track, 'ref': item['ref'], 'cloud': true});
+                  }
+                }
+              } while (found.isEmpty && cloudHasMore);
+              return found;
+            }
             final response = await linsen.service.request(
               'GET',
               path ??
@@ -181,8 +220,10 @@ class _LinsenWorkspaceState extends State<LinsenWorkspace> {
       }
       setState(() {
         rows = append ? [...rows, ...batch] : batch;
-        more = results.any((r) => r.length == 30);
-        offset += 30;
+        more = section == 'cloud'
+            ? cloudHasMore
+            : results.any((r) => r.length == 30);
+        offset = section == 'cloud' ? cloudOffset : offset + 30;
       });
     } catch (e) {
       if (generation == epoch && mounted) {
@@ -381,6 +422,18 @@ class _LinsenWorkspaceState extends State<LinsenWorkspace> {
                   style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600),
                 ),
                 const Spacer(),
+                if (section == 'local')
+                  IconButton(
+                    tooltip: '管理本地音乐文件夹',
+                    onPressed: () async {
+                      await showAnimationDialog(
+                        context: context,
+                        child: const ManageMusicFolders(),
+                      );
+                      if (mounted) await load();
+                    },
+                    icon: const Icon(Icons.folder_open),
+                  ),
                 if (section == 'cloud')
                   IconButton(
                     tooltip: '上传云盘',
@@ -429,6 +482,11 @@ class _LinsenWorkspaceState extends State<LinsenWorkspace> {
                   onChanged: (v) {
                     setState(() {
                       platform = v!;
+                      if (section == 'tracks' ||
+                          section == 'cloud' ||
+                          section == 'local') {
+                        section = 'search';
+                      }
                     });
                     load();
                   },
@@ -465,6 +523,8 @@ class _LinsenWorkspaceState extends State<LinsenWorkspace> {
                               onSelected: (_) {
                                 setState(() {
                                   section = e.key;
+                                  if (section == 'cloud') platform = 'netease';
+                                  if (section == 'local') platform = 'local';
                                 });
                                 load();
                               },

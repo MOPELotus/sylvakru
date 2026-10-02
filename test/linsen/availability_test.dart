@@ -10,6 +10,48 @@ ResolvedMedia media({bool trial = false}) => ResolvedMedia({
   if (trial) 'trial': {'end_ms': 30000},
 });
 void main() {
+  test('Exhausted chains with transport failures stay unknown', () async {
+    final resolver = AvailabilityResolver((_) async {
+      throw const TuneWeaveException('no_playable_source', 'unresolved', {
+        'attempts': [
+          {'status': 'unavailable'},
+          {'status': 'upstream_error'},
+        ],
+      });
+    });
+    await expectLater(resolver.check('1'), throwsA(isA<TuneWeaveException>()));
+    expect(resolver.state('1').grey, false);
+  });
+  test(
+    'Confirmed negative results avoid requests until their TTL expires',
+    () async {
+      var now = DateTime(2026), calls = 0;
+      final resolver = AvailabilityResolver((_) async {
+        calls++;
+        throw const TuneWeaveException('resource_not_found', 'none', {
+          'attempts': [
+            {'status': 'no_match'},
+            {'status': 'unavailable'},
+          ],
+        });
+      }, clock: () => now);
+      await expectLater(
+        resolver.check('1'),
+        throwsA(isA<TuneWeaveException>()),
+      );
+      await expectLater(
+        resolver.check('1'),
+        throwsA(isA<TuneWeaveException>()),
+      );
+      expect(calls, 1);
+      now = now.add(const Duration(minutes: 2));
+      await expectLater(
+        resolver.check('1'),
+        throwsA(isA<TuneWeaveException>()),
+      );
+      expect(calls, 2);
+    },
+  );
   test(
     'Fallback media stays playable regardless of origin entitlement',
     () async {

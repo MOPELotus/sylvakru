@@ -19,7 +19,9 @@ Windows libmpv: LGPL-2.1-or-later; included FFmpeg: LGPL-3.0-or-later.
 Exact runtime URLs and SHA-256 are pinned in tooling/mpv-lock.json.
 These dynamically loaded libraries can be replaced with compatible builds.
 License texts and corresponding-source references are in assets/licenses/.
-Android runtimes retain the upstream libmpv/FFmpeg license notices;
-release remains blocked until their final binary configurations are audited.
+Android libmpv/FFmpeg runtimes: LGPL-3.0-or-later. ARMv7 and ARM64
+FFmpeg binaries report LGPL v3 and --disable-gpl; their hashes and source
+references are recorded in docs/RUNTIME_AUDIT.md. Final packages still
+require extraction and comparison against these audited libraries.
 
 Other dependency notices are available in the application's license viewer.

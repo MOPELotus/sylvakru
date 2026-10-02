@@ -1,0 +1,35 @@
+# 开发与验收状态
+
+当前为开发版本，正式发布验收尚未完成。
+
+已运行 Flutter 静态检查、35 项测试和 Rust 内嵌适配器测试。
+Dart FFI 客户端实际启动内嵌服务并通过带设备令牌的健康检查。
+Linux 开发环境实际操作了首页、跨平台搜索、账户弹窗和浏览平台菜单。
+Flutter 渲染日志确认使用 NVIDIA RTX A4000，驱动 580.173.02。
+已解析在线歌曲、展示来源、封面和时长；服务器没有声卡，不能作为声音输出验收。
+该 Linux 环境仅用于开发检查，不是承诺交付的产品平台。
+
+Windows/Android 四架构由 Actions 构建；最终成功运行链接及产物以交付说明为准。
+云盘真实账号操作、真实播放上报、后台播放与音频焦点、安装和声音输出仍需目标设备验收。
+mock 测试验证了传输中断恢复、避免重复发布、原账号绑定及不重复发送不确定上报，
+这些测试不等同于平台真实账号验收。
+
+## ColorOS 16 与 HyperOS
+
+Android 接入现有 AudioService 的标准 MediaSession、媒体通知、播放控制与音频焦点。
+歌词行独立更新在应用媒体元数据中，保持歌曲标题。
+这不代表厂商系统已支持本应用的岛式歌词。当前没有接通 ColorOS 16 真机，
+也没有可核验的 OPPO 专属音乐歌词协议/授权；流体云控制与歌词都保留未验收状态。
+
+HyperOS 使用标准媒体会话作为基线；专属超级岛扩展尚未实现和验证。
+[小米妙播文档](https://dev.mi.com/xiaomihyperos/documentation/detail?pId=1602)
+描述标准媒体会话接入；[超级岛接入流程](https://dev.mi.com/xiaomihyperos/documentation/detail?pId=2132)
+涉及开发者认证、应用登记和测试设备。
+[OPPO 流体云组件文档](https://open.oppomobile.com/new/developmentDoc/info?id=12703)
+描述厂商模板。不能仅由这份文档推断音乐歌词能力已可接入。
+
+[Android Live Updates 文档](https://developer.android.com/develop/ui/views/notifications/live-update)
+列出了可提升的通知样式及厂商额外条件，MediaStyle 不在所列样式中。
+因此不会仅添加一个 promoted 标记就宣称实现流体云音乐。
+
+`verification.json` 中保留真实验收门槛；未填的项目不会自动变成通过。

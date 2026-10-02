@@ -33,7 +33,25 @@ jobs:
           rustup default 1.98.1
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;28.2.13676358' 'platforms;android-36' 'build-tools;36.0.0'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+      - name: Restore native build cache
+        id: native-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/tuneweave_runtime/target
+          key: native-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('native/tuneweave_runtime/Cargo.lock', 'native/tuneweave_runtime/src/**') }}
       - run: python3 tooling/build_native.py android ${{ matrix.arch }}
+      - name: Save completed native build
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/tuneweave_runtime/target
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
       - name: Configure the persistent release signature
         env:
           KEYSTORE: ${{ secrets.LINSEN_KEYSTORE_BASE64 }}
@@ -79,12 +97,30 @@ jobs:
           architecture: x64
           cache: true
       - run: flutter pub get --enforce-lockfile
+      - name: Restore native build cache
+        id: native-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/tuneweave_runtime/target
+          key: native-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('native/tuneweave_runtime/Cargo.lock', 'native/tuneweave_runtime/src/**') }}
       - name: Build native backend
         shell: pwsh
         run: |
           rustup toolchain install 1.98.1 --profile minimal
           rustup default 1.98.1
           python tooling/build_native.py windows ${{ matrix.arch }}
+      - name: Save completed native build
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/tuneweave_runtime/target
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
       - run: python tooling/build_lofty.py ${{ matrix.arch }}
       - run: python tooling/prepare_mpv.py ${{ matrix.arch }}
       - name: Select native Windows ARM64 artifacts

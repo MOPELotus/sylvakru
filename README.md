@@ -26,7 +26,11 @@ cargo test --locked --manifest-path native/tuneweave_runtime/Cargo.toml
 Android：设置 `ANDROID_NDK_HOME` 为 NDK 28.2.13676358，运行
 `python tooling/build_native.py android arm64` 或 `arm`，再运行对应架构的 `flutter build apk`。
 Windows：运行 `python tooling/build_native.py windows x64` 或 `arm64`，
-`python tooling/prepare_mpv.py <架构>`，再构建 Flutter。内嵌后端通过 Dart FFI 加载进程内动态库。
+`python tooling/build_lofty.py <架构>` 和 `python tooling/prepare_mpv.py <架构>`，
+再运行 `flutter build windows --release`。ARM64 使用原生 ARM64 主机；
+当运行官方 x64 Flutter SDK 时，先运行 `python tooling/prepare_flutter_arm64.py`，
+该脚本核对固定 SDK 源码后选择原生 ARM64 引擎。最终安装包仍检查所有 PE 架构。
+内嵌后端通过 Dart FFI 加载进程内动态库。
 
 ## 自动构建与发布
 

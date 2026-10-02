@@ -130,7 +130,11 @@ class Sidebar extends StatelessWidget {
                         children: [
                           Transform.translate(
                             offset: Offset(0, 2),
-                            child: ImageIcon(iconImage, size: 28),
+                            child: Image(
+                              image: iconImage,
+                              width: 28,
+                              height: 28,
+                            ),
                           ),
                           SizedBox(width: 5),
                           Text(

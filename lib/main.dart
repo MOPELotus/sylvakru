@@ -294,7 +294,7 @@ Future<void> _setupTray() async {
   );
 
   if (!Platform.isLinux) {
-    await trayManager.setToolTip('Sylvaru');
+    await trayManager.setToolTip('Linsen');
   }
 
   Locale systemLocale = PlatformDispatcher.instance.locale;
@@ -310,6 +310,13 @@ Future<void> _setupTray() async {
 }
 
 void _registerLicenses() {
+  LicenseRegistry.addLicense(() async* {
+    for (final file in ['lgpl-3.0.txt', 'gpl-3.0.txt']) {
+      yield LicenseEntryWithLineBreaks([
+        'FFmpeg runtime',
+      ], await rootBundle.loadString('assets/licenses/$file'));
+    }
+  });
   LicenseRegistry.addLicense(() async* {
     for (final file in ['tuneweave-apache.txt', 'tuneweave-mit.txt']) {
       yield LicenseEntryWithLineBreaks([
