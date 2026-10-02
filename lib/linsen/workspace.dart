@@ -140,7 +140,7 @@ class _LinsenWorkspaceState extends State<LinsenWorkspace> {
                       .map((a) => a['name'])
                       .join(' ');
                   final text =
-                      '${track['name']} $artists ${item['file_name'] ?? ''}'
+                      '${track['name']} $artists ${item['filename'] ?? ''}'
                           .toLowerCase();
                   if (text.contains(query.text.trim().toLowerCase())) {
                     found.add({...track, 'ref': item['ref'], 'cloud': true});

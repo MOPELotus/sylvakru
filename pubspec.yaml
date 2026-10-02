@@ -86,10 +86,6 @@ dependencies:
   in_app_purchase: ^3.3.0
   text_scroll: ^0.2.1
   liquid_glass_widgets: ^1.7.0
-  rive_animated_icon:
-    git:
-      url: https://github.com/AfalpHy/rive_animated_icons.git
-      ref: 81eb597af7b4b82305e5559963b8013380e2ebed
   windows_taskbar:
     git:
       url: https://github.com/axel10/windows_taskbar.git
