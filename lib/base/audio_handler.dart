@@ -479,10 +479,11 @@ class MyAudioHandler extends BaseAudioHandler {
   }
 
   void singlePlay(MyAudioMetadata song) async {
+    final intent = ++_transportGeneration;
     if (insert2Next(song)) {
       await skipToNext();
     }
-    play();
+    if (intent == _transportGeneration) await play();
   }
 
   Future<void> setPlayQueue(
@@ -490,6 +491,7 @@ class MyAudioHandler extends BaseAudioHandler {
     int playMode, {
     int? targetIndex,
   }) async {
+    final intent = ++_transportGeneration;
     if (targetIndex != null) {
       currentIndex = targetIndex;
     } else {
@@ -502,7 +504,7 @@ class MyAudioHandler extends BaseAudioHandler {
       shuffle();
     }
     await audioHandler.load();
-    audioHandler.play();
+    if (intent == _transportGeneration) await audioHandler.play();
 
     saveAllStates();
   }
@@ -947,8 +949,9 @@ class MyAudioHandler extends BaseAudioHandler {
       return;
     }
     final intent = ++_transportGeneration;
+    final selection = _loadGeneration;
     if (isMobile && !await _session.setActive(true)) return;
-    if (intent != _transportGeneration) return;
+    if (intent != _transportGeneration || selection != _loadGeneration) return;
     if (loadingSong) {
       updateIsPlaying(true);
       return;
@@ -980,6 +983,7 @@ class MyAudioHandler extends BaseAudioHandler {
   Future<void> stop() async {
     _transportGeneration++;
     _loadGeneration++;
+    loadingSong = false;
     unawaited(linsen.outbox.finish());
     final stopped = _player.stop();
     updateIsPlaying(false);
